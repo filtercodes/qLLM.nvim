@@ -59,30 +59,97 @@ local function get_code_block(text)
     local tree = parser:parse()[1]
     local root = tree:root()
 
-    -- Query for fenced code blocks and their content
-    local query = vim.treesitter.query.parse("markdown", "(fenced_code_block (code_fence_content) @code)")
-    local code_contents = {}
+    local current_ft = Utils.get_filetype()
 
+    -- Find all fenced code blocks
+    local query = vim.treesitter.query.parse("markdown", "(fenced_code_block) @block")
+
+    local blocks = {}
     for _, node, _ in query:iter_captures(root, text, 0, -1) do
-        local content = vim.treesitter.get_node_text(node, text)
-        for _, line in ipairs(vim.split(content, "\n")) do
-            table.insert(code_contents, line)
+        local lang = ""
+        local content = ""
+
+        -- Manually check children for info_string and content
+        for child in node:iter_children() do
+            if child:type() == "info_string" then
+                lang = vim.trim(vim.treesitter.get_node_text(child, text))
+            elseif child:type() == "code_fence_content" then
+                content = vim.treesitter.get_node_text(child, text)
+            end
         end
-        -- Return the first valid code block content found
-        if #code_contents > 0 then
-            return code_contents
+
+        if content ~= "" then
+            table.insert(blocks, { lang = lang, content = content })
         end
+    end
+
+    if #blocks == 0 then return nil end
+
+    -- 1. First Pass: Find the largest block matching the current filetype
+    local best_block = nil
+    for _, block in ipairs(blocks) do
+        if block.lang == current_ft then
+            if not best_block or #block.content > #best_block.content then
+                best_block = block
+            end
+        end
+    end
+
+    -- 2. Second Pass: If no filetype match, find the largest block overall
+    if not best_block then
+        for _, block in ipairs(blocks) do
+            if not best_block or #block.content > #best_block.content then
+                best_block = block
+            end
+        end
+    end
+
+    if best_block then
+        return vim.split(vim.trim(best_block.content), "\n")
     end
 
     return nil
 end
 
+---Structural code extraction using Tree-sitter.
+---Used when we want to extract just the code from a markdown response.
 function Utils.trim_to_code_block(lines)
     local text = table.concat(lines, "\n")
     local code = get_code_block(text)
     if code then
         return code
     end
+
+    return lines
+end
+
+---Removes leading and trailing backtick fences if they exist.
+---Used for commands like 'edit' and 'complete' to prevent markdown artifacts in code.
+function Utils.strip_broken_fences(lines)
+    -- Broken Fence Protection:
+    -- Check if the response starts/ends with a broken fence.
+    if #lines > 1 then
+        local first = lines[1]
+        local last = lines[#lines]
+        local has_broken_fence = false
+
+        if first:match("^```") then
+            table.remove(lines, 1)
+            has_broken_fence = true
+        end
+
+        if #lines > 0 and last:match("^```") then
+            table.remove(lines, #lines)
+            has_broken_fence = true
+        end
+
+        if has_broken_fence then
+            -- Re-trim whitespace after removing fences
+            local cleaned_text = table.concat(lines, "\n")
+            return vim.split(vim.trim(cleaned_text), "\n")
+        end
+    end
+
     return lines
 end
 
@@ -173,5 +240,40 @@ function Utils.strip_thinking_tags(text)
     return result:match("^%s*(.-)%s*$") or ""
 end
 
+
+---Greedily attempts to decode a JSON object from a stream buffer.
+---This is highly robust against formatting and internal braces (like code blocks).
+---It finds the first '{', then iteratively tests '}' until decoding succeeds.
+---@param buffer string The accumulated stream buffer.
+---@param start_search_idx number The index to start looking for '{'
+---@return boolean ok True if a complete JSON object was decoded.
+---@return table|nil json The decoded JSON object.
+---@return number next_idx The index where the decoded JSON ended, allowing the caller to advance the buffer.
+function Utils.decode_json_stream(buffer, start_search_idx)
+    local json_start_idx = string.find(buffer, "{", start_search_idx, true)
+    if not json_start_idx then return false, nil, start_search_idx end
+
+    local search_end_idx = json_start_idx
+    while true do
+        -- Find the next '}'
+        local json_end_idx = string.find(buffer, "}", search_end_idx, true)
+        if not json_end_idx then
+            -- Reached end of buffer without successfully decoding -> wait for more chunks
+            return false, nil, json_start_idx
+        end
+
+        local json_str = string.sub(buffer, json_start_idx, json_end_idx)
+        local ok, json = pcall(vim.json.decode, json_str)
+
+        if ok and json then
+            -- Success! We found the exact boundary.
+            return true, json, json_end_idx
+        end
+
+        -- Failed to decode (likely because this '}' was inside a string or code block).
+        -- Move past this '}' and try the next one.
+        search_end_idx = json_end_idx + 1
+    end
+end
 
 return Utils

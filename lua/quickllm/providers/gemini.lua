@@ -117,7 +117,7 @@ local function curl_callback(response, user_message_text, cb, bufnr)
     end
 
     vim.schedule_wrap(function(msg)
-        local json = vim.fn.json_decode(msg)
+        local ok, json = pcall(vim.fn.json_decode, msg)
         GeminiProvider.handle_response(json, user_message_text, cb, bufnr)
     end)(body)
 
@@ -134,9 +134,19 @@ function GeminiProvider.handle_response(json, user_message_text, cb, bufnr)
         print("Response is incomplete. Payload: " .. vim.fn.json_encode(json))
     else
         local candidate = json.candidates[1]
-        if candidate.content and candidate.content.parts and candidate.content.parts[1] then
-            local response_text = candidate.content.parts[1].text
+        if candidate.content and candidate.content.parts then
+            local response_text = ""
 
+            for _, part in ipairs(candidate.content.parts) do
+                local is_thought = (part.thought == true) or (part.thought and type(part.thought) == "string")
+
+                -- Skip thoughts for editor/history
+                if not is_thought and part.text and type(part.text) == "string" then
+                    response_text = response_text .. part.text
+                end
+            end
+
+            -- Append search sources
             if candidate.groundingMetadata and candidate.groundingMetadata.groundingChunks then
                  local sources = {}
                  for i, chunk in ipairs(candidate.groundingMetadata.groundingChunks) do
@@ -150,21 +160,17 @@ function GeminiProvider.handle_response(json, user_message_text, cb, bufnr)
                  end
             end
 
-            if response_text ~= nil then
-                if type(response_text) ~= "string" or response_text == "" then
-                    print("Error: No response text " .. type(response_text))
-                else
-                    History.add_message(bufnr, "user", user_message_text)
-                    History.add_message(bufnr, "assistant", response_text)
+            if response_text ~= "" then
+                History.add_message(bufnr, "user", user_message_text)
+                History.add_message(bufnr, "assistant", response_text)
 
-                    if vim.g.quickllm_clear_visual_selection and vim.api.nvim_buf_is_valid(bufnr) then
-                        vim.api.nvim_buf_set_mark(bufnr, "<", 0, 0, {})
-                        vim.api.nvim_buf_set_mark(bufnr, ">", 0, 0, {})
-                    end
-                    cb(Utils.parse_lines(response_text))
+                if vim.g.quickllm_clear_visual_selection and vim.api.nvim_buf_is_valid(bufnr) then
+                    vim.api.nvim_buf_set_mark(bufnr, "<", 0, 0, {})
+                    vim.api.nvim_buf_set_mark(bufnr, ">", 0, 0, {})
                 end
+                cb(Utils.parse_lines(response_text))
             else
-                print("Error: No completion")
+                print("Error: No completion found in response parts")
             end
         else
             print("Error: No completion")
@@ -195,92 +201,12 @@ function GeminiProvider.make_call(payload, user_message_text, cb, bufnr)
         local full_text = ""
         local collected_sources = {}
 
-        local function parse_chunk_line(line)
-            local trimmed_line = vim.trim(line)
-            if vim.startswith(trimmed_line, "data:") then
-                local json_str = vim.trim(string.sub(trimmed_line, 6)) -- remove "data:"
-                if json_str ~= "[DONE]" then
-                    local ok, json = pcall(vim.json.decode, json_str) 
-                    if ok and json then
-                        -- DEBUG: Show the raw JSON in a popup if enabled
-                        if vim.g.quickllm_debug_json then
-                            vim.schedule(function()
-                                Ui.popup(vim.split(vim.inspect(json), "\n"), "lua", bufnr)
-                            end)
-                            vim.g.quickllm_debug_json = false
-                        end
-                    end
-
-                    if not ok then
-                        return nil, nil, nil
-                    end
-
-                    if json.error then
-                        return nil, nil, json.error.message or "Unknown Gemini API Error"
-                    end
-
-                    if json and json.candidates and json.candidates[1] then
-                         local candidate = json.candidates[1]
-                         local text_fragment = ""
-                         local thought_fragment = ""
-
-                         if candidate.content and candidate.content.parts then
-                             for _, part in ipairs(candidate.content.parts) do
-                                 -- 1. Handle "thought" as a boolean flag (Gemini 2.0 Flash Thinking)
-                                 -- In this case, the actual text is in part.text
-                                 if part.thought == true then
-                                     if part.text and type(part.text) == "string" then
-                                         thought_fragment = thought_fragment .. part.text
-                                     end
-                                 -- 2. Handle "thought" as a direct string field
-                                 elseif part.thought and type(part.thought) == "string" then
-                                     thought_fragment = thought_fragment .. part.thought
-                                 -- 3. Handle regular "text" as answer content
-                                 elseif part.text and type(part.text) == "string" then
-                                     text_fragment = text_fragment .. part.text
-                                 end
-                             end
-                         end
-
-                         if candidate.groundingMetadata and candidate.groundingMetadata.groundingChunks then
-                             for i, chunk in ipairs(candidate.groundingMetadata.groundingChunks) do
-                                 if chunk.web and chunk.web.uri then
-                                     local title = chunk.web.title or "Untitled"
-                                     table.insert(collected_sources, string.format("[%d] %s - %s", i, title, chunk.web.uri))
-                                 end
-                             end
-                         end
-
-                         if text_fragment ~= "" or thought_fragment ~= "" then
-                             return text_fragment, thought_fragment, nil
-                         elseif candidate.finishReason and candidate.finishReason ~= "STOP" then
-                             return nil, nil, "Gemini Stopped: " .. candidate.finishReason
-                         end
-                    end
-                end
-            elseif string.sub(trimmed_line, 1, 1) == "{" then
-                -- Attempt to parse non-SSE error response from the API
-                local ok, json = pcall(vim.json.decode, trimmed_line)
-                if ok and json and json.error then
-                     return nil, nil, json.error.message or "Unknown Gemini API Error"
-                end
-            end
-            return nil, nil, nil
-        end
-
         curl.post(url, {
             body = payload_str,
             headers = headers,
             raw = { "--no-buffer" },
             timeout = 20000, -- 20 seconds timeout
             stream = function(err, chunk)
-                -- DIAGNOSTIC: Print raw chunks directly to the UI
-                if chunk then
-                    vim.schedule(function()
-                        -- vim.notify("RAW CHUNK: " .. tostring(chunk), vim.log.levels.INFO)
-                    end)
-                end
-
                 if err then
                     vim.schedule(function()
                         vim.notify("Gemini Curl Error: " .. vim.inspect(err), vim.log.levels.ERROR)
@@ -291,27 +217,11 @@ function GeminiProvider.make_call(payload, user_message_text, cb, bufnr)
                 end
 
                 if not chunk then 
-                    -- End of stream: Flush remaining partial data
+                    -- End of stream
                     vim.schedule(function()
-                         -- vim.notify("Gemini Stream End. Collected sources: " .. #collected_sources, vim.log.levels.DEBUG)
-                         if partial_data and partial_data ~= "" then
-                            local text_fragment, thought_fragment, err_msg = parse_chunk_line(partial_data)
-                            if err_msg then
-                                 vim.notify("Gemini Parse Error at EOF: " .. err_msg, vim.log.levels.ERROR)
-                                 cb.on_error(err_msg)
-                            else
-                                if thought_fragment and thought_fragment ~= "" then
-                                    cb.on_chunk(thought_fragment, true)
-                                end
-                                if text_fragment and text_fragment ~= "" then
-                                    full_text = full_text .. text_fragment
-                                    cb.on_chunk(text_fragment, false)
-                                end
-                            end
-                        end
-
                         if #collected_sources > 0 and vim.g.quickllm_show_search_sources then
                              local sources_text = "\n\n**Sources:**\n" .. table.concat(collected_sources, "\n")
+                             full_text = full_text .. sources_text
                              cb.on_chunk(sources_text, false)
                         end
 
@@ -324,12 +234,9 @@ function GeminiProvider.make_call(payload, user_message_text, cb, bufnr)
                     return 
                 end
 
-                -- Debug raw chunk
-                -- vim.schedule(function() print("Raw Chunk: " .. chunk) end)
-
                 partial_data = partial_data .. chunk
 
-                local current_buffer = partial_data -- Work on a mutable copy
+                local current_buffer = partial_data
                 local processed_segment_end = 0
 
                 while true do
@@ -338,55 +245,61 @@ function GeminiProvider.make_call(payload, user_message_text, cb, bufnr)
 
                     local json_start_idx = data_start_idx + string.len("data: ")
 
-                    -- Find the matching '}' for the JSON object
-                    local brace_level = 0
-                    local json_end_idx = -1
-                    for i = json_start_idx, #current_buffer do
-                        local char = string.sub(current_buffer, i, i)
-                        if char == "{" then
-                            brace_level = brace_level + 1
-                        elseif char == "}" then
-                            brace_level = brace_level - 1
-                        end
-                        if brace_level == 0 and char == "}" then
-                            json_end_idx = i
-                            break
-                        end
-                    end
-
-                    if json_end_idx == -1 then
-                        -- Incomplete JSON object, leave it in partial_data for the next chunk
+                    -- Check for [DONE] which doesn't need JSON decoding
+                    if string.sub(current_buffer, json_start_idx, json_start_idx + 5) == "[DONE]" then
+                        processed_segment_end = json_start_idx + 6
                         break
                     end
 
-                    local json_str = string.sub(current_buffer, json_start_idx, json_end_idx)
-                    processed_segment_end = json_end_idx -- Move processed_segment_end to the end of this JSON object
+                    local ok, json, next_idx = Utils.decode_json_stream(current_buffer, json_start_idx)
+                    if not ok then break end -- Wait for more data
 
-                    if json_str == "[DONE]" then
-                        -- This is typically the last message, but for robustness we still process
-                        -- parse_chunk_line will handle this correctly
+                    processed_segment_end = next_idx
+
+                    if json then
+                        if json.error then
+                            vim.schedule(function()
+                                vim.notify("Gemini API Error: " .. (json.error.message or "Unknown"), vim.log.levels.ERROR)
+                                cb.on_error(json.error.message or "Unknown")
+                            end)
+                            break
+                        end
+
+                        if json.candidates and json.candidates[1] then
+                            local candidate = json.candidates[1]
+                            if candidate.content and candidate.content.parts then
+                                -- LINEAR PROCESSING: Emit each part immediately in order
+                                for _, part in ipairs(candidate.content.parts) do
+                                    local is_thought = (part.thought == true) or (part.thought and type(part.thought) == "string")
+                                    local text = ""
+
+                                    if is_thought then
+                                        text = (type(part.thought) == "string" and part.thought) or part.text or ""
+                                    else
+                                        text = part.text or ""
+                                        -- Only add regular text to history
+                                        full_text = full_text .. text
+                                    end
+
+                                    if text ~= "" then
+                                        cb.on_chunk(text, is_thought)
+                                    end
+                                end
+                            end
+
+                            -- Collect grounding sources
+                            if candidate.groundingMetadata and candidate.groundingMetadata.groundingChunks then
+                                for i, chunk in ipairs(candidate.groundingMetadata.groundingChunks) do
+                                    if chunk.web and chunk.web.uri then
+                                        local title = chunk.web.title or "Untitled"
+                                        table.insert(collected_sources, string.format("[%d] %s - %s", i, title, chunk.web.uri))
+                                    end
+                                end
+                            end
+                        end
                     end
 
-                    -- Process the extracted JSON string
-                    local line_to_parse = "data: " .. json_str -- Re-add data: for parse_chunk_line
-                    local text_fragment, thought_fragment, err_msg = parse_chunk_line(line_to_parse)
-
-                    if err_msg then
-                        vim.schedule(function()
-                            vim.notify("Gemini Parse Error: " .. err_msg, vim.log.levels.ERROR)
-                            cb.on_error(err_msg)
-                        end)
-                    else
-                        if thought_fragment and thought_fragment ~= "" then
-                            cb.on_chunk(thought_fragment, true)
-                        end
-                        if text_fragment and text_fragment ~= "" then
-                            full_text = full_text .. text_fragment
-                            cb.on_chunk(text_fragment, false)
-                        end
-                    end
-
-                    -- After processing a JSON object, check for and skip any immediate trailing newlines
+                    -- Skip trailing newlines
                     local next_char_idx = processed_segment_end + 1
                     while next_char_idx <= #current_buffer and string.sub(current_buffer, next_char_idx, next_char_idx) == "\n" do
                         processed_segment_end = next_char_idx
@@ -394,7 +307,6 @@ function GeminiProvider.make_call(payload, user_message_text, cb, bufnr)
                     end
                 end
 
-                -- Update partial_data with any remaining unprocessed part
                 partial_data = string.sub(current_buffer, processed_segment_end + 1)
             end,
             on_error = function(err)

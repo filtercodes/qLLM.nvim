@@ -65,7 +65,8 @@ function Renderer.update_thinking_state(info, is_thinking, show_thinking)
 
     local separator = ""
     if info.last_chunk_was_thinking and not is_thinking then
-        if show_thinking then
+        -- Only add separator if we are showing the thinking context
+        if show_thinking ~= false then
             separator = "\n\n---\n\n"
         end
     end

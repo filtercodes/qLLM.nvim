@@ -251,29 +251,12 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
                         break
                     end
 
-                    -- Find matching braces for JSON
-                    local brace_level = 0
-                    local json_end_idx = -1
-                    for i = json_start_idx, #current_buffer do
-                        local char = string.sub(current_buffer, i, i)
-                        if char == "{" then
-                            brace_level = brace_level + 1
-                        elseif char == "}" then
-                            brace_level = brace_level - 1
-                        end
-                        if brace_level == 0 and char == "}" then
-                            json_end_idx = i
-                            break
-                        end
-                    end
+                    local ok, json, next_idx = Utils.decode_json_stream(current_buffer, json_start_idx)
+                    if not ok then break end -- Wait for more data
 
-                    if json_end_idx == -1 then break end -- Incomplete JSON
+                    processed_segment_end = next_idx
 
-                    local json_str = string.sub(current_buffer, json_start_idx, json_end_idx)
-                    processed_segment_end = json_end_idx
-
-                    local ok, json = pcall(vim.json.decode, json_str)
-                    if ok and json then
+                    if json then
                         -- DEBUG: Show the raw JSON in a popup if enabled
                         if vim.g.quickllm_debug_json then
                             vim.schedule(function()
@@ -296,10 +279,10 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
                                 json.type == "response.reasoning_content.delta" or
                                 json.type == "response.reasoning.delta" or
                                 json.type == "response.reasoning_text.delta") and json.delta then
-                            -- Various reasoning/thinking tokens
+                            -- API-NATIVE TRUST: Stream reasoning in sequence, but keep out of history
                             cb.on_chunk(json.delta, true)
                         elseif json.reasoning_delta then
-                            -- Catch reasoning_delta field directly if present
+                            -- Catch reasoning_delta field directly if present (keep out of history)
                             cb.on_chunk(json.reasoning_delta, true)
                         elseif json.type == "response.completed" and json.response and json.response.output then
                             -- Extract citations from final response
@@ -320,6 +303,7 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
                             end
                             if #sources > 0 and vim.g.quickllm_show_search_sources then
                                 local sources_text = "\n\n**Sources:**\n" .. table.concat(sources, "\n")
+                                -- Sources are added to history
                                 full_text = full_text .. sources_text
                                 cb.on_chunk(sources_text, false)
                             end
@@ -327,7 +311,7 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
                             local delta = json.choices[1].delta
                             -- Handle Reasoning/Thinking (e.g. o1/o3 models)
                             if delta.reasoning_content then
-                                -- Do NOT append thinking to full_text for clean history
+                                -- Stream thinking but keep out of history
                                 cb.on_chunk(delta.reasoning_content, true)
                             end
                             -- Handle Actual Answer

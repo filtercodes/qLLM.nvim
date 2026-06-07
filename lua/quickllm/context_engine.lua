@@ -153,7 +153,7 @@ function M.scan_search(files, query, context_lines)
         end
 
         if #matches > 0 then
-            results = results .. string.format("\nFILE: %s (Matches for '%s')\n", path, query)
+            results = results .. string.format("\nFILE: %s (Matches for '%s')\n", vim.fn.fnamemodify(path, ":."), query)
             local last_end = -1
 
             for _, line_num in ipairs(matches) do
@@ -184,11 +184,12 @@ end
 ---@param fargs table The command arguments.
 ---@param current_bufnr number The current buffer.
 ---@param current_selection string? Optional current visual selection.
+---@param overrides table? Optional overrides passed from the command runner.
 ---@return string? command The resolved command name.
 ---@return string command_args The prompt/arguments for the LLM.
 ---@return string text_selection The injected context.
 ---@return table overrides Table with history_user_message and ground_with_history.
-function M.handle_context_command(command, fargs, current_bufnr, current_selection)
+function M.handle_context_command(command, fargs, current_bufnr, current_selection, overrides)
     local CommandsList = require("quickllm.commands_list")
     local ProjectContext = require("quickllm.project_context")
     local raw_input = table.concat(fargs, " ", 2)
@@ -196,7 +197,8 @@ function M.handle_context_command(command, fargs, current_bufnr, current_selecti
     
     local context_text = ""
     local resolved_files = {}
-    local overrides = { ground_with_history = false }
+    overrides = overrides or {}
+    overrides.ground_with_history = false
     local command_args = remaining_prompt
     local text_selection = current_selection or ""
 

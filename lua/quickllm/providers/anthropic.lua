@@ -147,7 +147,8 @@ function AnthropicProvider.make_call(payload, user_message_text, cb, bufnr)
                     vim.schedule(function()
                         if #collected_sources > 0 and vim.g.quickllm_show_search_sources then
                             local sources_text = "\n\n**Sources:**\n" .. table.concat(collected_sources, "\n")
-                            cb.on_chunk(sources_text)
+                            full_text = full_text .. sources_text
+                            cb.on_chunk(sources_text, false)
                         end
                         cb.on_complete(full_text)
                         Api.run_finished_hook()
@@ -165,39 +166,26 @@ function AnthropicProvider.make_call(payload, user_message_text, cb, bufnr)
 
                     local json_start_idx = data_start_idx + string.len("data: ")
 
-                    -- Find matching braces for JSON
-                    local brace_level = 0
-                    local json_end_idx = -1
-                    -- To avoid failing on literal braces inside strings, we try to use the end of the line if it exists
-                    local next_nl = string.find(current_buffer, "\n", json_start_idx, true)
-                    if next_nl then
-                        json_end_idx = next_nl - 1
-                    else
-                        for i = json_start_idx, #current_buffer do
-                            local char = string.sub(current_buffer, i, i)
-                            if char == "{" then
-                                brace_level = brace_level + 1
-                            elseif char == "}" then
-                                brace_level = brace_level - 1
+                    local ok, json, next_idx = Utils.decode_json_stream(current_buffer, json_start_idx)
+
+                    if not ok then
+                        -- Check if it's a [DONE] message or something without JSON
+                        local end_line = string.find(current_buffer, "\n", json_start_idx, true)
+                        if end_line then
+                            local maybe_str = vim.trim(string.sub(current_buffer, json_start_idx, end_line - 1))
+                            if maybe_str == "" or maybe_str == "[DONE]" then
+                                processed_segment_end = end_line
+                                -- Need to skip trailing newlines logic below
+                            else
+                                break -- It's not empty, not done, and not JSON. Wait for more.
                             end
-                            if brace_level == 0 and char == "}" then
-                                json_end_idx = i
-                                break
-                            end
+                        else
+                            break -- No newline, wait for more data.
                         end
-                    end
+                    else
+                        processed_segment_end = next_idx
 
-                    if json_end_idx == -1 then break end -- Incomplete JSON
-
-                    local json_str = string.sub(current_buffer, json_start_idx, json_end_idx)
-                    processed_segment_end = json_end_idx
- 
-                    -- Clean up any trailing characters from the line extraction
-                    json_str = string.match(json_str, "^%s*(.-)%s*$")
-
-                    if json_str ~= "" and json_str ~= "[DONE]" then
-                        local ok, json = pcall(vim.json.decode, json_str)
-                        if ok and json then
+                        if json then
                             -- DEBUG: Show the raw JSON in a popup if enabled
                             if vim.g.quickllm_debug_json then
                                 vim.schedule(function()

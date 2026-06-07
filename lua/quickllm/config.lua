@@ -183,7 +183,7 @@ vim.g.quickllm_commands_defaults = {
     },
     ["complete"] = {
         user_message_template =
-        "I have the following {{language}} code snippet: ```{{filetype}}\n{{text_selection}}```\nComplete the rest. Use best practices and write really good documentation. {{language_instructions}} Only return the code snippet and nothing else.",
+        "I have the following {{language}} code: \n\n{{text_selection}}\n\nComplete the rest. Use best practices and descriptive commenting. {{language_instructions}} Only return the code snippet and nothing else.",
         language_instructions = {
             ["*"] = "Use modern {{language}} syntax and features.",
         },
@@ -192,7 +192,7 @@ vim.g.quickllm_commands_defaults = {
     },
     ["edit"] = {
         user_message_template =
-        "I have the following {{language}} code: ```{{filetype}}\n{{text_selection}}```\n{{command_args}}. {{language_instructions}} Only return the code snippet and nothing else.",
+        "I have the following {{language}} code: \n{{filetype}}\n\n{{text_selection}}\n\n{{command_args}}.\n{{language_instructions}} Only return the code snippet and nothing else.",
         language_instructions = {
             ["*"] = "Use modern {{language}} syntax and features.",
         },
@@ -210,7 +210,7 @@ vim.g.quickllm_commands_defaults = {
     },
     ["doc"] = {
         user_message_template =
-        "I have the following {{language}} code: ```{{filetype}}\n{{text_selection}}```\nWrite really good documentation using best practices for the given language. Attention paid to documenting parameters, return types, any exceptions or errors. {{language_instructions}} Only return the code snippet and nothing else.",
+        "I have the following {{language}} code:\n{{filetype}}\n\n{{text_selection}}\n\nWrite comprehensive documentation using best practices for the given language. Attention paid to documenting parameters, return types, any exceptions or errors.\n{{language_instructions}} Only return the code snippet and nothing else.",
         language_instructions = {
             ["*"] = "Use the standard documentation style (e.g. Docstrings, JSDoc, Doxygen) typical for {{language}}.",
         },
@@ -218,7 +218,7 @@ vim.g.quickllm_commands_defaults = {
     },
     ["opt"] = {
         user_message_template =
-        "I have the following {{language}} code: ```{{filetype}}\n{{text_selection}}```\nOptimize this code. {{language_instructions}} Only return the code snippet and nothing else.",
+        "I have the following {{language}} code: \n{{filetype}}\n\n{{text_selection}}\n\nOptimize this code. {{language_instructions}} Only return the code snippet and nothing else.",
         language_instructions = {
             ["*"] = "Use modern {{language}} syntax and best practices.",
         },
@@ -226,7 +226,7 @@ vim.g.quickllm_commands_defaults = {
     },
     ["tests"] = {
         user_message_template =
-        "I have the following {{language}} code: ```{{filetype}}\n{{text_selection}}```\nWrite really good unit tests using best practices for the given language. {{language_instructions}} Only return the unit tests. Only return the code snippet and nothing else. ",
+        "I have the following {{language}} code: ```{{filetype}}\n{{text_selection}}```\nWrite robust unit tests using best practices for the given language. {{language_instructions}} Only return the unit tests. Only return the code snippet and nothing else. ",
         callback_type = "code_popup",
         language_instructions = {
             ["*"] = "Use modern {{language}} syntax. Generate unit tests using a standard testing framework appropriate for {{language}}.",

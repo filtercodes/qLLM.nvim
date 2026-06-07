@@ -8,18 +8,7 @@ local function create_command(name)
     end, {
         range = true,
         nargs = "*",
-        complete = function()
-            local cmd = {}
-            for k, v in pairs(vim.g.quickllm_commands_defaults or {}) do
-                if type(v) == "table" then
-                    table.insert(cmd, k)
-                end
-            end
-            for k in pairs(vim.g.quickllm_commands or {}) do
-                table.insert(cmd, k)
-            end
-            return cmd
-        end,
+        complete = require("quickllm.commands_list").complete,
     })
 end
 

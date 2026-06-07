@@ -56,7 +56,11 @@ function M.init_project(callback)
 
     -- Get directory listing
     local files = vim.fn.globpath(root, "*", true, true)
-    local dir_listing = table.concat(files, "\n")
+    local relative_files = {}
+    for _, file in ipairs(files) do
+        table.insert(relative_files, vim.fn.fnamemodify(file, ":."))
+    end
+    local dir_listing = table.concat(relative_files, "\n")
 
     local prompt = string.format([[
 You are the Project Librarian. Analyze the following project structure and README.

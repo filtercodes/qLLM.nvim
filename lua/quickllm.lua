@@ -174,7 +174,7 @@ function QuickllmModule.run_cmd(opts)
         -- 1. Handle Context-Heavy Commands (files/scan/explain)
         if command == "files" or command == "scan" or command == "explain" then
             local ContextEngine = require("quickllm.context_engine")
-            command, command_args, text_selection, overrides = ContextEngine.handle_context_command(command, opts.fargs, current_bufnr, text_selection)
+            command, command_args, text_selection, overrides = ContextEngine.handle_context_command(command, opts.fargs, current_bufnr, text_selection, overrides)
 
             -- Early return if the command was handled internally (e.g. scan results only)
             if command == nil then return end
@@ -206,11 +206,18 @@ function QuickllmModule.run_cmd(opts)
             elseif is_ui_window then
                 -- No explicit command, but we are in a UI window. Default to chat continuation
                 command = "chat"
-                -- command_args is already the full input
-                text_selection = "" -- Ignore any selection in the popup
+                if command_args == "" and text_selection ~= nil and text_selection ~= "" then
+                    -- The user used <C-i> (visual selection to run command)
+                    command_args = text_selection
+                    text_selection = "" -- Clear it so it isn't treated as injected context
+                end
             else
                 -- No explicit command, and we are in a normal buffer.
-                command = "chat" -- Default to chat
+                if command_args == "" and text_selection ~= nil and text_selection ~= "" then
+                    command = "edit" -- Default to edit if code is selected
+                else
+                    command = "chat" -- Default to chat
+                end
             end
         end
 

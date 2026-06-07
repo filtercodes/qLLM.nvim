@@ -14,7 +14,7 @@ function M.is_buffer_busy(path)
     return false
 end
 
----Surgically patches a file asynchronously using libuv.
+---Patches a file asynchronously using libuv.
 ---@param path string The file to patch.
 ---@param content string The new content.
 ---@param sanity_rules table? { min_size_pct = 0.9, preserve_headers = true }

@@ -157,6 +157,9 @@ function OllaMaProvider.handle_response(json, user_message_text, cb, bufnr)
             if type(response_text) ~= "string" or response_text == "" then
                 print("Error: No response text " .. type(response_text))
             else
+                -- Bulletproof non-streaming: strip thinking tags from final response
+                response_text = Utils.strip_thinking_tags(response_text)
+
                 -- Add both user and assistant messages to history at the same time
                 History.add_message(bufnr, "user", user_message_text)
                 History.add_message(bufnr, "assistant", response_text)
@@ -243,34 +246,12 @@ function OllaMaProvider.make_call(payload, user_message_text, cb, bufnr)
                 local processed_segment_end = 0
 
                 while true do
-                    -- Find the start of a JSON object
-                    local json_start_idx = string.find(current_buffer, "{", processed_segment_end + 1, true)
-                    
-                    if not json_start_idx then break end
+                    local ok, json, next_idx = Utils.decode_json_stream(current_buffer, processed_segment_end + 1)
+                    if not ok then break end -- Wait for more data
 
-                    -- Find the matching '}' for the JSON object
-                    local brace_level = 0
-                    local json_end_idx = -1
-                    for i = json_start_idx, #current_buffer do
-                        local char = string.sub(current_buffer, i, i)
-                        if char == "{" then
-                            brace_level = brace_level + 1
-                        elseif char == "}" then
-                            brace_level = brace_level - 1
-                        end
-                        if brace_level == 0 and char == "}" then
-                            json_end_idx = i
-                            break
-                        end
-                    end
+                    processed_segment_end = next_idx
 
-                    if json_end_idx == -1 then break end
-
-                    local json_str = string.sub(current_buffer, json_start_idx, json_end_idx)
-                    processed_segment_end = json_end_idx
-
-                    local ok, json = pcall(vim.json.decode, json_str)
-                    if ok and json then
+                    if json then
                         -- Handle Ollama API errors in the stream
                         if json.error then
                             vim.schedule(function()

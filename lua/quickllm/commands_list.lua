@@ -18,12 +18,15 @@ CommandsList.CallbackTypes = {
         Ui.popup(lines, popup_filetype, bufnr, start_row, start_col, end_row, end_col)
     end,
     ["code_popup"] = function(lines, bufnr, start_row, start_col, end_row, end_col)
-        lines = Utils.trim_to_code_block(lines)
         Utils.fix_indentation(bufnr, start_row, end_row, lines)
         Ui.popup(lines, Utils.get_filetype(), bufnr, start_row, start_col, end_row, end_col)
     end,
     ["replace_lines"] = function(lines, bufnr, start_row, start_col, end_row, end_col)
+        -- Structural extraction via Tree-sitter
         lines = Utils.trim_to_code_block(lines)
+        -- Cleanup of broken fences (if TS failed or was partial)
+        lines = Utils.strip_broken_fences(lines)
+
         lines = Utils.remove_trailing_whitespace(lines)
         Utils.fix_indentation(bufnr, start_row, end_row, lines)
         if vim.api.nvim_buf_is_valid(bufnr) == true then
@@ -176,6 +179,67 @@ function CommandsList.get_cmd_opts(cmd, overrides)
     end
     
     return opts
+end
+
+---Context-Aware Completion for the command line.
+---@param ArgLead string The leading portion of the argument currently being completed.
+---@param CmdLine string The entire command line.
+---@param CursorPos number The cursor position in the command line.
+---@return table A list of completion suggestions.
+function CommandsList.complete(ArgLead, CmdLine, CursorPos)
+    local parts = {}
+    for word in CmdLine:gmatch("%S+") do
+        table.insert(parts, word)
+    end
+
+    local ends_with_space = CmdLine:match("%s$") ~= nil
+
+    -- If we are still typing the first argument (sub-command)
+    if #parts == 1 or (#parts == 2 and not ends_with_space) then
+        local cmd = {}
+        for k, v in pairs(vim.g.quickllm_commands_defaults or {}) do
+            if type(v) == "table" then
+                table.insert(cmd, k)
+            end
+        end
+        for k in pairs(vim.g.quickllm_commands or {}) do
+            table.insert(cmd, k)
+        end
+
+        local res = {}
+        for _, c in ipairs(cmd) do
+            if c:find("^" .. vim.pesc(ArgLead)) then
+                table.insert(res, c)
+            end
+        end
+        return res
+    end
+
+    local sub_cmd = parts[2]
+
+    -- If the sub-command deals with files, provide native file completion
+    if sub_cmd == "files" or sub_cmd == "scan" or sub_cmd == "wiki_save" then
+        local clean_lead = ArgLead
+        local quote = ""
+        -- Handle leading quotes to allow users to group files containing spaces
+        if ArgLead:match("^[\"']") then
+            quote = ArgLead:sub(1, 1)
+            clean_lead = ArgLead:sub(2)
+        end
+
+        local files = vim.fn.getcompletion(clean_lead, "file")
+        if quote ~= "" then
+            local res = {}
+            for _, f in ipairs(files) do
+                table.insert(res, quote .. f)
+            end
+            return res
+        else
+            return files
+        end
+    end
+
+    return {}
 end
 
 return CommandsList

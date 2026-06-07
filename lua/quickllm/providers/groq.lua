@@ -146,29 +146,12 @@ function GroqProvider.make_call(payload, user_message_text, cb, bufnr)
                         break
                     end
 
-                    -- Find matching braces for JSON
-                    local brace_level = 0
-                    local json_end_idx = -1
-                    for i = json_start_idx, #current_buffer do
-                        local char = string.sub(current_buffer, i, i)
-                        if char == "{" then
-                            brace_level = brace_level + 1
-                        elseif char == "}" then
-                            brace_level = brace_level - 1
-                        end
-                        if brace_level == 0 and char == "}" then
-                            json_end_idx = i
-                            break
-                        end
-                    end
+                    local ok, json, next_idx = Utils.decode_json_stream(current_buffer, json_start_idx)
+                    if not ok then break end -- Wait for more data
 
-                    if json_end_idx == -1 then break end -- Incomplete JSON
+                    processed_segment_end = next_idx
 
-                    local json_str = string.sub(current_buffer, json_start_idx, json_end_idx)
-                    processed_segment_end = json_end_idx
-
-                    local ok, json = pcall(vim.json.decode, json_str)
-                    if ok and json then
+                    if json then
                         if json.error then
                             vim.schedule(function()
                                 Ui.popup(vim.split(vim.inspect(json), "\n"), "lua", bufnr)

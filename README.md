@@ -10,7 +10,7 @@ Focus is on context management, knowledge extraction and using direct commands t
 
 | | Requirements |
 |-------------|-------------|
-| Neovim >= 0.12.0 | Native support for all features (including Tree-sitter for Wiki parsing). |
+| Neovim >= 0.12.0 | Native support. |
 | Neovim 0.10.x - 0.11.x | Requires manual installation of [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter) (with `markdown` and `markdown_inline` parsers). |
 | External (Wiki only) | `sqlite3` CLI and the `sqlite-vec` shared library (see [setup guide](#vector-search-setup-sqlite-vec)). |
 | Dependencies | [plenary.nvim](https://github.com/nvim-lua/plenary.nvim) and [nui.nvim](https://github.com/MunifTanjim/nui.nvim). |
