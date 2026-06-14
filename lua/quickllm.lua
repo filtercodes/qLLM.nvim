@@ -34,6 +34,7 @@ function QuickllmModule.run_cmd(opts)
     end
 
     -- Handle `clear` as a special case that doesn't need validation
+    -- 1. HANDLE UTILITY COMMANDS (Early Return)
     if command == "clear" and #opts.fargs == 1 then
         History.clear_history(bufnr)
         vim.b[bufnr].quickllm_metadata = nil
@@ -141,9 +142,8 @@ function QuickllmModule.run_cmd(opts)
         return
     end
 
-    local cmd_opts = nil
+    -- 2. RESOLVE PROVIDER & PRESETS
     local overrides = nil
-
     -- Command-to-Provider Mapping
     local provider_map = {
         Gemini = "gemini",
@@ -169,60 +169,34 @@ function QuickllmModule.run_cmd(opts)
         end
     end
 
-    -- Final execution logic
+    -- 3. EXECUTION PIPELINE
     local function execute_with_fresh_context()
-        -- 1. Handle Context-Heavy Commands (files/scan/explain)
-        if command == "files" or command == "scan" or command == "explain" then
-            local ContextEngine = require("quickllm.context_engine")
-            command, command_args, text_selection, overrides = ContextEngine.handle_context_command(command, opts.args, current_bufnr, text_selection, overrides)
+        local ContextEngine = require("quickllm.context_engine")
 
-            -- Early return if the command was handled internally (e.g. scan results only)
-            if command == nil then return end
+        -- Universal Context Resolution (Files, Selection, Project Map)
+        local resolved_command, resolved_command_args, resolved_text_selection, resolved_overrides = 
+            ContextEngine.handle_context_command(command, opts.args, current_bufnr, text_selection, overrides)
 
-            -- Refresh cmd_opts after command potentially changed (e.g. files -> explain)
-            cmd_opts = CommandsList.get_cmd_opts(command, overrides)
-        else
-            -- 2. Standard Command Detection
+        if resolved_command == nil then return end -- Handled internally (e.g. scan popup)
 
-            -- If special commands were used with arguments, we want them to fall through to chat/code_edit guessing logic
-            -- and prevent them from fetching default options.
-            if not ((command == "clear" or is_recall or is_undo) and #opts.fargs > 1) then
-                cmd_opts = CommandsList.get_cmd_opts(command, overrides)
-            end
+        command = resolved_command
+        command_args = resolved_command_args
+        text_selection = resolved_text_selection
+        overrides = resolved_overrides
 
-            -- If the detected command doesn't support arguments but arguments were provided,
-            -- treat it as a general chat message instead.
-            if cmd_opts ~= nil and not has_command_args(cmd_opts) and #opts.fargs > 1 then
-                cmd_opts = nil
-            end
+        -- Fetch Options for the Final Resolved Command
+        local cmd_opts = CommandsList.get_cmd_opts(command, overrides)
 
-            if cmd_opts ~= nil then
-                -- An explicit command was used (e.g., :Chat explain, :Chat tests)
-                if has_command_args(cmd_opts) then
-                    command_args = table.concat(opts.fargs, " ", 2)
-                else
-                    command_args = ""
-                end
-            elseif is_ui_window then
-                -- No explicit command, but we are in a UI window. Default to chat continuation
-                command = "chat"
-                if command_args == "" and text_selection ~= nil and text_selection ~= "" then
-                    -- The user used <C-i> (visual selection to run command)
-                    command_args = text_selection
-                    text_selection = "" -- Clear it so it isn't treated as injected context
-                end
-            else
-                -- No explicit command, and we are in a normal buffer.
-                if command_args == "" and text_selection ~= nil and text_selection ~= "" then
-                    command = "edit" -- Default to edit if code is selected
-                else
-                    command = "chat" -- Default to chat
-                end
-            end
+        if command == nil or command == "" or cmd_opts == nil then
+            vim.notify("No valid command or options found for: " .. (command or "unknown"), vim.log.levels.ERROR, {
+                title = "QuickLLM",
+            })
+            return
         end
 
-        if command == nil or command == "" then
-            vim.notify("No command or text selection provided", vim.log.levels.ERROR, {
+        -- Check if command requires context (selection or files)
+        if not cmd_opts.allow_empty_text_selection and (text_selection == nil or text_selection == "") then
+            vim.notify("This command (" .. command .. ") requires a visual selection or file context.", vim.log.levels.WARN, {
                 title = "QuickLLM",
             })
             return
@@ -231,8 +205,11 @@ function QuickllmModule.run_cmd(opts)
         Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts, overrides)
     end
 
-    -- SMART-SYNC: If command is context-heavy, ensure project context is fresh before proceeding.
-    if command == "files" or command == "scan" or command == "explain" then
+    -- If command is context-heavy, ensure project context is fresh before proceeding.
+    local is_context_heavy = command == "files" or command == "scan" or command == "explain" 
+        or opts.args:find("%[") ~= nil -- Prompt contains file blocks
+
+    if is_context_heavy then
         local ProjectContext = require("quickllm.project_context")
         ProjectContext.ensure_fresh_context(execute_with_fresh_context)
     else

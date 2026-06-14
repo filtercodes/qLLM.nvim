@@ -40,11 +40,13 @@ local function curl_callback(response, user_message_text, cb, bufnr)
     if status ~= 200 then
         body = body:gsub("%s+", " ")
         print("Error: " .. status .. " " .. body)
+        Api.run_finished_hook()
         return
     end
 
     if body == nil or body == "" then
         print("Error: No body")
+        Api.run_finished_hook()
         return
     end
 

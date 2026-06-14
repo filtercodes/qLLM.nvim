@@ -94,26 +94,40 @@ There are also configurable presets: `:Chat1`, `:Chat2`, and `:Chat3`. To quickl
 
 ![tests](examples/tests.gif?raw=true)
 
-### A list of default commands
+## A list of default commands
+
+### General commands
 
 | Command      | Input | Description |
 |--------------|---- |------------------------------------|
-| chat  |  prompt | Passes the given prompt to LLM and returns the response in a popup. |
-| search |  prompt (optional text selection) | Triggers a web search (grounding) before answering to provide up-to-date information and reduce LLM hallucinations. Shows the grounded answer in a popup. |
+| chat  |  prompt | General chat command - Passes the given prompt to LLM and returns the response in a popup. |
+| search |  prompt (optional text selection) | Triggers a web search (grounding) before answering to provide up-to-date information. Shows the grounded answer in a popup. |
+
+### Code related commands
+
 | complete |  text selection | Asks LLM to complete the selected code directly in the editor. |
 | edit  |  text selection + prompt | Asks LLM to apply the given instructions to the selected code in the editor. |
-| explain  |  text selection | Asks LLM to explain the selected code and return the answer in a text popup. |
+| tests  |  text selection | Asks LLM to write unit tests for the selected code in the popup window. |
+| opt  |  text selection | Asks LLM to optimize the selected code. Updates the code directly in the editor. |
+| debug  |  text selection | Passes the code selection to LLM to analyze it for bugs, the results will be in a popup. |
+| doc  |  text selection | Asks LLM to document the selected code. Updates the text directly in the editor. |
+
+### Context and Knowledge commands
+
 | init  |  none | Analyzes the local project and creates an architectural map (`quickLLM.md`) for the context orchestration. |
 | files  |  [file list] + prompt | Reads local project files (supports wildcards) and passes their content as context for the prompt. |
 | scan  |  [file list] + "query" + prompt | Performs a fast literal search or hybrid semantic search (if initialized) across local project files and sends relevant chunks to the LLM. |
+| explain  |  text selection | Asks LLM to explain the selected text or code and return the explanation in a text popup. |
+
+### Wiki commands
+
 | wiki  |  query | Performs a semantic search across your personal "Wiki" Knowledge Base using Hierarchical RAG. |
 | wiki_index  |  none | Scans your Wiki folder and performs a one-pass indexing with LLM-generated summaries and vectors. |
 | wiki_save  |  text selection or none | Saves current buffer or visual selection into the Wiki Knowledge Base for future retrieval. |
 | wiki_lint  |  none | Runs the Auditor to find isolated notes or 'Shadow Concepts' in the Wiki. |
-| doc  |  text selection | Asks LLM to document the selected code. Updates the text directly in the editor. |
-| tests  |  text selection | Asks LLM to write unit tests for the selected code in the popup window. |
-| opt  |  text selection | Asks LLM to optimize the selected code. Updates the code directly in the editor. |
-| debug  |  text selection | Passes the code selection to LLM to analyze it for bugs, the results will be in a popup. |
+
+### Other command defaults
+
 | recall  |  none or number | Displays the last assistant response from the chat history in a popup without altering the history. Optionally accept a number to go further back (e.g., `:Chat recall 2`). |
 | undo  |  none | Removes the last exchange (prompt and the assistant's response) from the chat history. Useful for reverting a bad conversation turn. |
 | clear  |  none | Clears the short-term chat memory to start fresh. |
@@ -195,17 +209,6 @@ vim.g.quickllm_commands_defaults1 = {
     temperature = 0.2
 }
 ```
-
-### Configuration Merge Logic (The Waterfall)
-
-When you run a command, QuickLLM determines the settings by merging tables in this order (highest priority from the top):
-
-1.  User Commands: Custom logic in `vim.g.quickllm_commands[cmd]`.
-2.  Command-Specific Override: Nested table in `vim.g.quickllm_commands_defaults[cmd]`.
-3.  Global Defaults: Flat keys in `vim.g.quickllm_commands_defaults`.
-4.  Global Provider Defaults: `vim.g.quickllm_provider_defaults[provider]`.
-5.  Preset Provider Defaults: `vim.g.quickllm_provider_defaults1[provider]`.
-6.  Hardcoded Defaults: Base values defined in the plugin code.
 
 ### Search (grounding) configuration
 
@@ -361,104 +364,6 @@ vim.keymap.set("n", "<leader>qu", function() qllm.undo() end)
 vim.keymap.set("n", "<leader>qc", function() qllm.clear() end)
 ```
 
-## More Configuration Options
-
-### Custom status hooks
-
-You can add custom hooks to update status line or other ui elements, for example, this code updates the status line colour to yellow while the request is in progress.
-
-```lua
-vim.g.quickllm_hooks = {
-	request_started = function()
-		vim.cmd("hi StatusLine ctermbg=NONE ctermfg=yellow")
-	end,
-  request_finished = vim.schedule_wrap(function()
-		vim.cmd("hi StatusLine ctermbg=NONE ctermfg=NONE")
-	end)
-}
-```
-
-### Lualine Status Component
-
-There is a convenience function `get_status` to add a status component to lualine. This function provides an animated progress spinner while a request is running, followed by the name of the last command and the active LLM model (e.g., `⠋ chat  🤖 qwen3.6:27b`).
-
-```lua
-local QuickllmModule = require("quickllm")
-
-require('lualine').setup({
-    sections = {
-        -- ...
-        lualine_x = { QuickllmModule.get_status, "encoding", "fileformat" },
-        -- ...
-    }
-})
-```
-
-To enable the animation of the progress spinner, add `require('lualine').refresh()` to the QuickLLM hooks in configuration so that the status bar redraws during the request:
-
-```lua
-vim.g.quickllm_hooks = {
-  request_started = function()
-    require('lualine').refresh()
-  end,
-  request_finished = vim.schedule_wrap(function()
-    require('lualine').refresh()
-  end)
-}
-```
-
-Alternatively if you don't use `lualine`, a `vim.notify` message will display the current model. If you do use `lualine` you might want to set this to `false`.
-
-```lua
-vim.g.quickllm_print_model = false
-```
-
-### Optimizing Local Models (Ollama)
-
-For the faster inference speed with local models via Ollama, you may want to set an empty system prompt for better prompt caching. If you configured a custom one in your `Modelfile`, then be sure to disable it globally in the Ollama provider settings:
-
-```lua
--- Optimize a preset (e.g., :Chat1)
-vim.g.quickllm_api_provider1 = "ollama"
-vim.g.quickllm_commands_defaults1 = {
-    system_message_template = "", -- Empty system prompt for better caching
-    search = {
-        provider = "local_grounding",
-        system_message_template = "" -- Also clear for search
-    }
-}
-```
-
-Additionally, look into how to enable KV Cache, and for MacOS use [NVFP4](https://ollama.com/blog/mlx) models to utilise MLX framework natively.
-
-## Troubleshooting & Logging
-
-Enable logging to inspect the raw JSON payloads sent to and from the LLM providers.
-
-### Enabling Logs
-
-Logging can be enabled for the entire session or just for the next request.
-
-```lua
--- Enable logging for the entire session
-vim.g.quickllm_log_enabled = true
-
--- Enable "One-Shot" logging (logs only the next request, then disables itself)
-vim.g.quickllm_debug = true
-```
-
-### Viewing Logs
-
-Logs are written to a file in local Neovim state directory. Find the exact path by running `:lua print(require("quickllm.logger").get_log_path())`
-
-View in real-time:
-
-```bash
-tail -f ~/.local/state/nvim/quickllm.log
-```
-
-The logs contain full JSON request payload and the assistant response.
-
 ## Popup options
 
 ### Popup commands
@@ -584,6 +489,106 @@ vim.g.quickllm_horizontal_popup_size = "40%"
 vim.g.quickllm_vertical_popup_size = "40%"
 ```
 
+## More Configuration Options
+
+### Custom status hooks
+
+You can add custom hooks to update status line or other ui elements, for example, this code updates the status line colour to yellow while the request is in progress.
+
+```lua
+vim.g.quickllm_hooks = {
+	request_started = function()
+		vim.cmd("hi StatusLine ctermbg=NONE ctermfg=yellow")
+	end,
+  request_finished = vim.schedule_wrap(function()
+		vim.cmd("hi StatusLine ctermbg=NONE ctermfg=NONE")
+	end)
+}
+```
+
+### Lualine Status Component
+
+There is a convenience function `get_status` to add a status component to lualine. This function provides an animated progress spinner while a request is running, followed by the name of the last command and the active LLM model (e.g., `⠋ chat  🤖 qwen3.6:27b`).
+
+```lua
+local QuickllmModule = require("quickllm")
+
+require('lualine').setup({
+    sections = {
+        -- ...
+        lualine_x = { QuickllmModule.get_status, "encoding", "fileformat" },
+        -- ...
+    }
+})
+```
+
+To enable the animation of the progress spinner, add `require('lualine').refresh()` to the QuickLLM hooks in configuration so that the status bar redraws during the request:
+
+```lua
+vim.g.quickllm_hooks = {
+  request_started = function()
+    require('lualine').refresh()
+  end,
+  request_finished = vim.schedule_wrap(function()
+    require('lualine').refresh()
+  end)
+}
+```
+
+Alternatively if you don't use `lualine`, a `vim.notify` message will display the current model. If you do use `lualine` you might want to set this to `false`.
+
+```lua
+vim.g.quickllm_print_model = false
+```
+
+### Optimizing Local Models (Ollama)
+
+For the faster inference speed with local models via Ollama, you may want to set an empty system prompt for better prompt caching. If you configured a custom one in your `Modelfile`, then be sure to disable it globally in the Ollama provider settings:
+
+```lua
+-- Optimize a preset (e.g., :Chat1)
+vim.g.quickllm_api_provider1 = "ollama"
+vim.g.quickllm_commands_defaults1 = {
+    system_message_template = "", -- Empty system prompt for better caching
+    search = {
+        provider = "local_grounding",
+        system_message_template = "" -- Also clear for search
+    }
+}
+```
+
+Additionally, look into how to enable KV Cache, and for MacOS use [NVFP4](https://ollama.com/blog/mlx) models to utilise MLX framework natively.
+
+## Troubleshooting & Logging
+
+Enable logging to inspect the raw JSON payloads sent to and from the LLM providers.
+
+### Enabling Logs
+
+Logging can be enabled for the entire session or just for the next request.
+
+```lua
+-- Enable logging for the entire session
+vim.g.quickllm_log_enabled = true
+
+-- Enable "One-Shot" logging (logs only the next request, then disables itself)
+vim.g.quickllm_debug = true
+```
+
+### Viewing Logs
+
+Logs are written to a file in local Neovim state directory. Find the exact path by running `:lua print(require("quickllm.logger").get_log_path())`
+
+View in real-time:
+
+```bash
+tail -f ~/.local/state/nvim/quickllm.log
+```
+
+The logs contain full JSON request payload and the assistant response.
+
+## Writing new commands
+
 ### Templates
 
 The `system_message_template` and the `user_message_template` can contain template macros. For example:
@@ -647,7 +652,7 @@ vim.g.quickllm_commands = {
 ```
 The above configuration adds the command `:Chat modernize` that attempts modernize the selected code snippet.
 
-## Callback Types
+### Callback Types
 
 Callback types control what happens to the response.
 
@@ -658,7 +663,7 @@ Callback types control what happens to the response.
 | code_popup | Displays the results in a popup window with the filetype set to the filetype of the current buffer |
 
 
-## Template Variables
+### Template Variables
 
 | Name      | Description |
 |--------------|----------|
@@ -667,4 +672,15 @@ Callback types control what happens to the response.
 | text_selection |  Any selected text. |
 | command_args | Command arguments. |
 | filetype_instructions | Filetype specific instructions. |
+
+### Configuration Merge Logic (The Waterfall)
+
+When you run a command, QuickLLM determines the settings by merging tables in this order (highest priority from the top):
+
+1.  User Commands: Custom logic in `vim.g.quickllm_commands[cmd]`.
+2.  Command-Specific Override: Nested table in `vim.g.quickllm_commands_defaults[cmd]`.
+3.  Global Defaults: Flat keys in `vim.g.quickllm_commands_defaults`.
+4.  Global Provider Defaults: `vim.g.quickllm_provider_defaults[provider]`.
+5.  Preset Provider Defaults: `vim.g.quickllm_provider_defaults1[provider]`.
+6.  Hardcoded Defaults: Base values defined in the plugin code.
 

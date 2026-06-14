@@ -126,8 +126,9 @@ local kb_defaults = {
     dimension = vim.g.quickllm_kb_embedding_dimension or 768,
 
     -- 4. PROJECT CONTEXT
-    project_provider = (vim.g.quickllm_project_defaults and vim.g.quickllm_project_defaults.provider) or "ollama",
-    project_model = (vim.g.quickllm_project_defaults and vim.g.quickllm_project_defaults.model) or "qwen3:8b",
+    project_provider = (vim.g.quickllm_project_defaults and vim.g.quickllm_project_defaults.provider) 
+        or vim.g.quickllm_api_provider or "ollama",
+    project_model = (vim.g.quickllm_project_defaults and vim.g.quickllm_project_defaults.model) or nil, -- nil means use provider default
     auto_init = true,
     auto_check_freshness = true,
 
@@ -173,9 +174,13 @@ vim.g.quickllm_commands_defaults = {
         allow_empty_text_selection = true,
     },
     ["files"] = {
+        user_message_template = "{{text_selection}}\n\n{{command_args}}",
+        default_prompt = "Analyze the provided files and provide a summary of their purpose and contents.",
         allow_empty_text_selection = true,
     },
     ["scan"] = {
+        user_message_template = "{{text_selection}}\n\n{{command_args}}",
+        default_prompt = "Analyze the provided chunks and explain thier purpose and contents",
         allow_empty_text_selection = true,
     },
     ["init"] = {
@@ -199,8 +204,8 @@ vim.g.quickllm_commands_defaults = {
         callback_type = "replace_lines",
     },
     ["explain"] = {
-        user_message_template =
-        "Explain the following {{language}} code: ```{{filetype}}\n{{text_selection}}``` Explain as if you were explaining to another developer.",
+        user_message_template = "{{command_args}}\n{{text_selection}}",
+        default_prompt = "Explain the provided {{language}} code as you were explaining to another developer:",
         callback_type = "text_popup",
     },
     ["debug"] = {
@@ -234,12 +239,12 @@ vim.g.quickllm_commands_defaults = {
         callback_type = "code_popup",
     },
     ["chat"] = {
-        user_message_template = "{{command_args}}",
+        user_message_template = "{{command_args}}\n{{text_selection}}",
         callback_type = "text_popup",
         allow_empty_text_selection = true,
     },
     ["search"] = {
-        user_message_template = "{{command_args}}",
+        user_message_template = "{{command_args}}\n{{text_selection}}\nIf sufficient, use the provided search results as a source and don't justify the usege of search or mention that you are searching, just answer.",
         system_message_template = "You are a helpful assistant. Use the web search tool to find up-to-date information to answer the user's query comprehensively.",
         callback_type = "text_popup",
         allow_empty_text_selection = true,

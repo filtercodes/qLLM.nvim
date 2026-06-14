@@ -129,6 +129,7 @@ function OllaMaProvider.make_request(command, cmd_opts, command_args, text_selec
         messages = messages_for_api,
         stream = false,
         think = cmd_opts.thinking,
+        command = command, -- Store for logging
     }
 
     if cmd_opts.temperature then
@@ -162,7 +163,7 @@ function OllaMaProvider.handle_response(json, user_message_text, cb, bufnr)
                 response_text = Utils.strip_thinking_tags(response_text)
 
                 -- TRACE: Log the final response
-                Logger.log_response("ollama", "legacy", response_text)
+                Logger.log_response("ollama", json.command or "chat", response_text)
                 -- Add both user and assistant messages to history at the same time
                 History.add_message(bufnr, "user", user_message_text)
                 History.add_message(bufnr, "assistant", response_text)
@@ -185,11 +186,13 @@ local function curl_callback(response, user_message_text, cb, bufnr)
     if status ~= 200 then
         body = body:gsub("%s+", " ")
         print("Error: " .. status .. " " .. body)
+        Api.run_finished_hook()
         return
     end
 
     if body == nil or body == "" then
         print("Error: No body")
+        Api.run_finished_hook()
         return
     end
 

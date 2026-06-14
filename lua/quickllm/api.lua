@@ -54,6 +54,10 @@ end
 
 function Api.run_finished_hook()
     QUICKLLM_CALLBACK_COUNTER = QUICKLLM_CALLBACK_COUNTER - 1
+    if QUICKLLM_CALLBACK_COUNTER < 0 then
+        QUICKLLM_CALLBACK_COUNTER = 0
+    end
+
     if QUICKLLM_CALLBACK_COUNTER <= 0 then
         if vim.g.quickllm_hooks["request_finished"] ~= nil then
             vim.g.quickllm_hooks["request_finished"]()

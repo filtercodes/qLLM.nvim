@@ -34,10 +34,13 @@ function M.generate_project_skeleton(root)
     return vim.fn.sha256(table.concat(structure, "\n")), count
 end
 
+local is_indexing = false
+local last_progress_time = 0
+
 ---Orchestrates the project initialization (:Chat init).
 ---@param callback function? Optional callback for when init is complete.
 function M.init_project(callback)
-    local kb_opts = vim.g.quickllm_kb_opts
+    local kb_opts = vim.g.quickllm_kb_opts or {}
     local now = os.time()
     if is_indexing and (now - last_progress_time < 300) then
         vim.notify("Project initialization already in progress.", vim.log.levels.WARN)
@@ -45,7 +48,6 @@ function M.init_project(callback)
     end
 
     local root = M.get_project_root()
-    -- ... (rest of function)
     is_indexing = true
     last_progress_time = now
     local readme_path = root .. "README.md"
@@ -70,24 +72,29 @@ Include:
 2. Core Hubs: Key files/directories and their functional roles.
 
 PROJECT STRUCTURE:
-%s
+%%s
 
 README CONTENT:
-%s
+%%s
 
 IMPORTANT: Output your response in Markdown format. Start with a metadata block in HTML comments:
 <!-- METADATA: {"hash": "PENDING", "count": 0} -->
 ]], dir_listing, readme_content)
 
     local provider_name = kb_opts.project_provider or "ollama"
-    local model_name = kb_opts.project_model or "qwen3:8b"
 
     local Providers = require("quickllm.providers")
-    local CommandsList = require("quickllm.commands_list")
     local provider = Providers.get_provider({ provider = provider_name })
 
+    -- If model is nil, fetch the provider's default
+    local model_name = kb_opts.project_model
+    if not model_name then
+        local CommandsList = require("quickllm.commands_list")
+        local provider_opts = CommandsList.get_cmd_opts("chat", { provider = provider_name })
+        model_name = provider_opts.model
+    end
+
     vim.notify("Initializing Project Context... Calling Librarian.", vim.log.levels.INFO)
-    Api.run_started_hook()
 
     provider.make_call({
         model = model_name,
@@ -98,7 +105,7 @@ IMPORTANT: Output your response in Markdown format. Start with a metadata block 
         local hash, count = M.generate_project_skeleton(root)
         
         -- Replace pending metadata with actual values
-        local metadata_str = string.format('{"hash": "%s", "count": %d}', hash, count)
+        local metadata_str = string.format('{"hash": "%%s", "count": %%d}', hash, count)
         local final_content = response:gsub('{"hash": "PENDING", "count": 0}', metadata_str)
         
         local output_path = root .. "quickLLM.md"
@@ -110,7 +117,6 @@ IMPORTANT: Output your response in Markdown format. Start with a metadata block 
         else
             vim.notify("Error: Could not write to " .. output_path, vim.log.levels.ERROR)
         end
-        Api.run_finished_hook()
         is_indexing = false
         if callback then callback() end
     end, -1)
@@ -132,7 +138,7 @@ function M.get_freshness_status()
     local context = M.get_active_context()
     if not context then return "missing" end
 
-    local metadata_json = context:match("<!%-%- METADATA: (.-) %-%->")
+    local metadata_json = context:match("<!%%-%%- METADATA: (.-) %%-%%->")
     if not metadata_json then return "stale" end
 
     local ok, decoded = pcall(vim.json.decode, metadata_json)
@@ -157,7 +163,7 @@ end
 ---Ensures project context is fresh, running init if needed based on auto_init setting.
 ---@param callback function The function to call once context is ready/checked.
 function M.ensure_fresh_context(callback)
-    local kb_opts = vim.g.quickllm_kb_opts
+    local kb_opts = vim.g.quickllm_kb_opts or {}
     local auto_init = kb_opts.auto_init ~= false
     local auto_check = kb_opts.auto_check_freshness ~= false
 
@@ -183,6 +189,13 @@ function M.ensure_fresh_context(callback)
     else
         -- status is "fresh" or "stale" (minor change)
         callback()
+    end
+end
+
+function M.check_freshness()
+    local status = M.get_freshness_status()
+    if status == "significant_change" then
+        vim.notify("[QuickLLM] Project map is stale. Run :Chat init to update.", vim.log.levels.WARN)
     end
 end
 

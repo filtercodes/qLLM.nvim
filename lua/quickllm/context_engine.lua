@@ -16,7 +16,12 @@ function M.resolve_patterns(patterns)
 
         for _, sub_pattern in ipairs(sub_patterns) do
             if sub_pattern ~= "" then
-                local expanded = vim.fn.glob(vim.fn.expand(sub_pattern), true, true)
+                -- Expand ~ manually if present to ensure glob works correctly
+                if sub_pattern:match("^~") then
+                    sub_pattern = vim.fn.expand(sub_pattern)
+                end
+
+                local expanded = vim.fn.glob(sub_pattern, true, true)
                 for _, path in ipairs(expanded) do
                     if vim.fn.filereadable(path) == 1 and not seen[path] then
                         table.insert(files, path)
@@ -149,7 +154,7 @@ function M.scan_search(files, query, context_lines)
     local results = ""
     -- Use global variable for context or default to 3
     local kb_opts = vim.g.quickllm_kb_opts
-    local ctx = context_lines or kb_opts.scan_context or 3
+    local ctx = context_lines or (kb_opts and kb_opts.scan_context) or 3
     
     for _, path in ipairs(files) do
         local lines = vim.fn.readfile(path)
@@ -189,7 +194,7 @@ function M.scan_search(files, query, context_lines)
     return results
 end
 
----Orchestrates context-based commands (files/scan/explain).
+---Orchestrates context gathering for all commands.
 ---@param command string The command name.
 ---@param args_str string The raw command arguments string.
 ---@param current_bufnr number The current buffer.
@@ -203,35 +208,46 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
     local CommandsList = require("quickllm.commands_list")
     local ProjectContext = require("quickllm.project_context")
 
+    local is_explicit_cmd = CommandsList.is_valid_cmd(command)
+
     -- Strip the command name from the beginning of the raw args string
-    local raw_input = vim.trim(args_str:sub(#command + 1))
+    -- 1. Parse Input
+    local raw_input = args_str
+    if is_explicit_cmd then
+        raw_input = vim.trim(args_str:sub(#command + 1))
+    end
     local extracted_blocks, query, remaining_prompt = M.parse_input(raw_input, command)
     
-    local context_text = ""
-    local resolved_files = {}
-    overrides = overrides or {}
-    overrides.ground_with_history = false
     local command_args = remaining_prompt
     local text_selection = current_selection or ""
+    overrides = overrides or {}
+    overrides.ground_with_history = false
 
     -- Project Context Injection
+    -- 2. Project Context (System Project Map) Injection
     local project_map = ProjectContext.get_active_context()
     local system_context = ""
-    local kb_opts = vim.g.quickllm_kb_opts
-
     if project_map then
         system_context = "\n[SYSTEM PROJECT CONTEXT]\n" .. project_map .. "\n---\n"
+        local kb_opts = vim.g.quickllm_kb_opts
         if kb_opts and kb_opts.auto_check_freshness then
             ProjectContext.check_freshness()
         end
     end
 
     -- Fallback: If no files were wrapped in quotes, scan the prompt for raw paths
+    -- 3. File Context Resolution
+    -- Fallback for unquoted files if it's a files/scan command
     if #extracted_blocks == 0 and (command == "files" or command == "scan") then
-        local unquoted_files = {}
         local new_remaining = {}
         for word in remaining_prompt:gmatch("%S+") do
-            local expanded = vim.fn.glob(vim.fn.expand(word), true, true)
+            -- Expand ~ manually if present
+            local pattern = word
+            if pattern:match("^~") then
+                pattern = vim.fn.expand(pattern)
+            end
+
+            local expanded = vim.fn.glob(pattern, true, true)
             local is_file = false
             for _, path in ipairs(expanded) do
                 if vim.fn.filereadable(path) == 1 then
@@ -246,66 +262,57 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
             end
         end
         remaining_prompt = table.concat(new_remaining, " ")
+        command_args = remaining_prompt
     end
 
     -- If there's no prompt explicitly typed after the files, but the user has selected text,
     -- use the selected text as the prompt for the files (only for files/scan commands).
-    if (command == "files" or command == "scan") and remaining_prompt == "" and current_selection ~= "" then
+    -- Handle Selection-to-Prompt fallback
+    if (command == "files" or command == "scan" or command == "chat" or not is_explicit_cmd) 
+        and remaining_prompt == "" and current_selection ~= "" then
         -- We assume the visual selection in this context is meant to be the prompt/instructions
-        remaining_prompt = current_selection
+        command_args = current_selection
         -- Clear text_selection so it doesn't get injected twice
         text_selection = ""
     end
 
+    local resolved_files = {}
     if #extracted_blocks > 0 then
         resolved_files = M.resolve_patterns(extracted_blocks)
+        -- If files found but no command, or command is 'chat', upgrade to 'files'
+        if not is_explicit_cmd or command == "chat" then
+            command = "files"
+        end
     elseif command == "scan" then
         resolved_files = { vim.api.nvim_buf_get_name(current_bufnr) }
     end
 
+    -- 4. Command-Specific Formatting
     if #resolved_files > 0 then
         if command == "files" then
-            context_text = M.format_files_as_context(resolved_files)
-            
-            local history_prompt = ""
-            if remaining_prompt == "" then
-                command = "explain"
-                command_args = "Explain the provided files."
-                history_prompt = "FILES: Explain " .. table.concat(extracted_blocks, ", ")
+            local context_text = M.format_files_as_context(resolved_files)
+            if command_args == "" then
+                overrides.history_user_message = "FILES ANALYSIS: " .. table.concat(extracted_blocks, ", ")
             else
-                local first_word = remaining_prompt:match("^(%S+)")
-                if first_word and CommandsList.is_valid_cmd(first_word) then
-                    command = first_word
-                    command_args = vim.trim(remaining_prompt:sub(#first_word + 1))
-                    history_prompt = "FILES " .. first_word:upper() .. ": " .. command_args .. " (" .. #resolved_files .. " files)"
-                else
-                    command = "chat"
-                    command_args = remaining_prompt
-                    history_prompt = "FILES CHAT: " .. command_args .. " (" .. #resolved_files .. " files)"
-                end
+                overrides.history_user_message = "FILES: " .. command_args .. " (" .. #resolved_files .. " files)"
             end
-            overrides.history_user_message = history_prompt
             -- Append original text_selection (if any remains) to the file context
-            local extra_selection = (text_selection ~= "") and ("\n[USER SELECTION]\n" .. text_selection) or ""
-            text_selection = system_context .. context_text .. extra_selection
+            text_selection = system_context .. context_text .. ((text_selection ~= "") and ("\n[USER SELECTION]\n" .. text_selection) or "")
         elseif command == "scan" then
             -- 1. Determine the search query (prioritize <query> brackets)
             local search_query = query or remaining_prompt
 
             if search_query and search_query ~= "" then
-                context_text = M.scan_search(resolved_files, search_query)
+                local context_text = M.scan_search(resolved_files, search_query)
 
                 -- 2. Determine prompt behavior
                 if query and remaining_prompt ~= "" then
                     -- Both <query> and a prompt provided: Send to LLM
-                    command = "chat"
-                    command_args = remaining_prompt
                     text_selection = system_context .. context_text
                     overrides.history_user_message = "SCAN: '" .. search_query .. "' in " .. table.concat(extracted_blocks, ", ")
                 else
                     -- No prompt provided: Just display results in a popup, bypass LLM.
                     local Ui = require("quickllm.ui")
-
                     local Utils = require("quickllm.utils")
                     local lines = Utils.parse_lines(context_text)
                     if #lines == 0 then table.insert(lines, "No matches found for: " .. search_query) end
@@ -314,10 +321,20 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
                     return nil, "", "", {}
                 end
             end
+        else
+            -- For other commands (e.g. :Chat [A.lua] explain), just inject the files as context
+            local context_text = M.format_files_as_context(resolved_files)
+            text_selection = system_context .. context_text .. ((text_selection ~= "") and ("\n[USER SELECTION]\n" .. text_selection) or "")
         end
-    elseif command == "explain" then
+    else
         -- Standard 'explain' injection
+        -- No files, just inject system context into text_selection
         text_selection = system_context .. text_selection
+    end
+
+    -- Final fallback for command if it's still not valid
+    if not CommandsList.is_valid_cmd(command) then
+        command = "chat"
     end
 
     return command, command_args, text_selection, overrides

@@ -276,4 +276,33 @@ function Utils.decode_json_stream(buffer, start_search_idx)
     end
 end
 
+---Path Command-Line Enter logic.
+---Prevents execution of files/scan commands if a bracket [ is unclosed.
+---Allows using Enter to select items from completion menu.
+---@return string The key sequence to execute.
+function Utils.handle_cmdline_enter()
+    local cmdline = vim.fn.getcmdline()
+    local cmd, sub = cmdline:match("^(%S+)%s+(%S+)")
+
+    local qllm_cmds = { Chat=1, Gemini=1, Claude=1, Openai=1, Ollama=1, Groq=1 }
+    local is_qllm = cmd and (qllm_cmds[cmd] or cmd:match("^Chat%d$"))
+
+    if is_qllm and (sub == "files" or sub == "scan") then
+        -- 1. If completion menu is open, Enter always selects (accepts current match).
+        if vim.fn.wildmenumode() == 1 or vim.fn.pumvisible() == 1 then
+            return "<C-y>"
+        end
+
+        -- 2. Only block if the first bracket is still unclosed.
+        -- This ensures at least one complete file block exists before accidental trigger,
+        -- but allows subsequent brackets in the user's prompt (e.g. code snippets).
+        local first_open = cmdline:find("%[")
+        local first_close = cmdline:find("%]")
+        if first_open and not first_close then
+            return "" -- Block execution
+        end
+    end
+    return "<CR>"
+end
+
 return Utils

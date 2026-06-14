@@ -22,6 +22,14 @@ create_command("Openai")
 create_command("Ollama")
 create_command("Groq")
 
+-- Path Command-Line Enter:
+-- Prevents accidental execution of files/scan commands if a bracket [ is unclosed.
+-- Allows using Enter to select files from the completion menu.
+vim.keymap.set("c", "<CR>", function()
+    return require("quickllm.utils").handle_cmdline_enter()
+end, { expr = true })
+
+
 vim.api.nvim_create_user_command("QuickllmStatus", function(opts)
 	return QuickllmModule.get_status(opts)
 end, {

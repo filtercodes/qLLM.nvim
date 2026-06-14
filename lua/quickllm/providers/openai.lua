@@ -42,6 +42,7 @@ function OpenAIProvider.make_request(command, cmd_opts, command_args, text_selec
 
     local request = {
         model = model,
+        command = command, -- Store for logging, will be deleted before API call
     }
 
     -- 1. Route to correct API structure
@@ -117,7 +118,7 @@ local function curl_callback(response, user_message_text, cb, bufnr)
     Api.run_finished_hook()
 end
 
-function OpenAIProvider.make_headers()
+function OpenAIProvider.make_headers(payload)
     local token = vim.g.quickllm_openai_api_key or os.getenv("OPENAI_API_KEY")
     if not token then
         error(
@@ -125,7 +126,14 @@ function OpenAIProvider.make_headers()
         )
     end
 
-    return { ["Content-Type"] = "application/json", Authorization = "Bearer " .. token }
+    local headers = { ["Content-Type"] = "application/json", Authorization = "Bearer " .. token }
+
+    -- Responses API requires a beta header
+    if payload and payload.input then
+        headers["OpenAI-Beta"] = "assistants=v2" -- Required for managed search in Responses API
+    end
+
+    return headers
 end
 
 function OpenAIProvider.handle_response(json, user_message_text, cb, bufnr)
@@ -162,8 +170,6 @@ function OpenAIProvider.handle_response(json, user_message_text, cb, bufnr)
         end
 
         if response_text ~= "" then
-            -- TRACE: Log the final response
-            Logger.log_response("openai", "legacy", response_text)
             History.add_message(bufnr, "user", user_message_text)
             History.add_message(bufnr, "assistant", response_text)
             if vim.g.quickllm_clear_visual_selection and vim.api.nvim_buf_is_valid(bufnr) then
@@ -182,8 +188,6 @@ function OpenAIProvider.handle_response(json, user_message_text, cb, bufnr)
             if type(response_text) ~= "string" or response_text == "" then
                 print("Error: No response text " .. type(response_text))
             else
-                -- TRACE: Log the final response
-                Logger.log_response("openai", "legacy", response_text)
                 -- Add history (Clean: only the answer)
                 History.add_message(bufnr, "user", user_message_text)
                 History.add_message(bufnr, "assistant", response_text)
@@ -208,12 +212,15 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
     if payload.input then
         url = vim.g.quickllm_openai_responses_url or "https://api.openai.com/v1/responses"
     end
-    local headers = OpenAIProvider.make_headers()
+    local headers = OpenAIProvider.make_headers(payload)
     Api.run_started_hook()
 
-    -- TRACE: Log the outgoing request
-    Logger.log_request("openai", payload.command or "chat", payload)
+    -- Extract command for logging and remove from strict payload
+    local command_name = payload.command or "chat"
+    payload.command = nil
 
+    -- TRACE: Log the outgoing request
+    Logger.log_request("openai", command_name, payload)
 
     if type(cb) == "table" then
         -- Streaming Mode
@@ -238,7 +245,7 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
                     -- End of stream
                     vim.schedule(function()
                         -- TRACE: Log the final response
-                        Logger.log_response("openai", payload.command or "chat", full_text)
+                        Logger.log_response("openai", command_name, full_text)
                         cb.on_complete(full_text)
                         Api.run_finished_hook()
                     end)
@@ -274,18 +281,34 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
                                 Api.run_finished_hook()
                             end)
                             return
+                        end
+
+                        -- 1. Handle Status Updates (Responses API)
+                        -- This provides visual feedback while the model is searching or thinking
+                        if json.type == "response.status_updated" and json.status then
+                            -- We send status as a "thinking" chunk (empty text) to trigger spinner updates in Commands.run_cmd
+                            -- Commands.run_cmd handles the logic for switching messages based on thinking state.
+                            cb.on_chunk("", true) 
+
+                        -- 2. Handle Text Content
                         elseif (json.type == "response.output_text.delta" or json.type == "response.text_delta") and json.delta then
                             full_text = full_text .. json.delta
                             cb.on_chunk(json.delta, false)
+
+                        -- 3. Handle Reasoning/Thinking Content
                         elseif (json.type == "response.summary_text.delta" or 
                                 json.type == "response.reasoning_content.delta" or
                                 json.type == "response.reasoning.delta" or
+                                json.type == "reasoning.delta" or
                                 json.type == "response.reasoning_text.delta") and json.delta then
                             -- API-NATIVE TRUST: Stream reasoning in sequence, but keep out of history
                             cb.on_chunk(json.delta, true)
+
                         elseif json.reasoning_delta then
                             -- Catch reasoning_delta field directly if present (keep out of history)
                             cb.on_chunk(json.reasoning_delta, true)
+
+                        -- 4. Handle Completion & Citations
                         elseif json.type == "response.completed" and json.response and json.response.output then
                             -- Extract citations from final response
                             local sources = {}
@@ -309,6 +332,8 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
                                 full_text = full_text .. sources_text
                                 cb.on_chunk(sources_text, false)
                             end
+
+                        -- 5. Standard Chat API Fallback
                         elseif json.choices and json.choices[1] and json.choices[1].delta then
                             local delta = json.choices[1].delta
                             -- Handle Reasoning/Thinking (e.g. o1/o3 models)
@@ -339,7 +364,11 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
             body = payload_str,
             headers = headers,
             callback = function(response)
-                curl_callback(response, user_message_text, cb, bufnr)
+                -- TRACE: Log the response in legacy mode too
+                curl_callback(response, user_message_text, function(txt)
+                    Logger.log_response("openai", command_name, table.concat(txt, "\n"))
+                    cb(txt)
+                end, bufnr)
             end,
             on_error = function(err)
                 print('Error:', err.message)

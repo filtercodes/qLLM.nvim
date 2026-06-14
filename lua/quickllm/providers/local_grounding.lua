@@ -81,8 +81,8 @@ local function call_tavily(query, cb)
 end
 
 function LocalGroundingProvider.make_call(payload, user_message_text, cb, bufnr)
-    Api.run_started_hook()
-    local OllaMaProvider = require("quickllm.providers.ollama")
+    local Providers = require("quickllm.providers")
+    local provider_instance = Providers.get_provider({ provider = payload.provider or "ollama" })
     
     -- Call Tavily
     call_tavily(user_message_text, function(tavily_json, err)
@@ -92,7 +92,6 @@ function LocalGroundingProvider.make_call(payload, user_message_text, cb, bufnr)
             else
                 print(err)
             end
-            Api.run_finished_hook()
             return
         end
 
@@ -104,7 +103,7 @@ function LocalGroundingProvider.make_call(payload, user_message_text, cb, bufnr)
             table.insert(sources, string.format("- %s (%s)", result.title, result.url))
         end
 
-        -- Construct Ollama Prompt
+        -- Construct LLM Prompt
         local past_messages = History.get_messages(bufnr)
         local messages = {}
         
@@ -118,10 +117,10 @@ function LocalGroundingProvider.make_call(payload, user_message_text, cb, bufnr)
 
         table.insert(messages, {role = "user", content = final_user_content})
 
-        local ollama_payload = vim.deepcopy(payload)
-        ollama_payload.messages = messages
+        local llm_payload = vim.deepcopy(payload)
+        llm_payload.messages = messages
 
-        -- Call Ollama through the expert Ollama provider
+        -- Call LLM through the resolved provider (e.g. OpenAI, Gemini, etc.)
         if type(cb) == "table" then
             -- Streaming Mode: Wrap callbacks to append sources
             local wrapped_cb = {
@@ -133,19 +132,17 @@ function LocalGroundingProvider.make_call(payload, user_message_text, cb, bufnr)
                         cb.on_chunk(sources_text)
                     end
                     cb.on_complete(full_text)
-                    -- Api.run_finished_hook() is called inside OllamaProvider.make_call
                 end
             }
-            OllaMaProvider.make_call(ollama_payload, user_message_text, wrapped_cb, bufnr)
+            provider_instance.make_call(llm_payload, user_message_text, wrapped_cb, bufnr)
         else
             -- Non-Streaming Mode: Wrap callback to append sources
-            OllaMaProvider.make_call(ollama_payload, user_message_text, function(lines)
+            provider_instance.make_call(llm_payload, user_message_text, function(lines)
                 local response_text = table.concat(lines, "\n")
                 if #sources > 0 and vim.g.quickllm_show_search_sources then
                     response_text = response_text .. "\n\n**Sources:**\n" .. table.concat(sources, "\n")
                 end
                 cb(Utils.parse_lines(response_text))
-                -- Api.run_finished_hook() is called inside OllamaProvider.make_call
             end, bufnr)
         end
     end)
