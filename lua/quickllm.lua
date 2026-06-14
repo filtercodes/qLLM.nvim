@@ -174,7 +174,7 @@ function QuickllmModule.run_cmd(opts)
         -- 1. Handle Context-Heavy Commands (files/scan/explain)
         if command == "files" or command == "scan" or command == "explain" then
             local ContextEngine = require("quickllm.context_engine")
-            command, command_args, text_selection, overrides = ContextEngine.handle_context_command(command, opts.fargs, current_bufnr, text_selection, overrides)
+            command, command_args, text_selection, overrides = ContextEngine.handle_context_command(command, opts.args, current_bufnr, text_selection, overrides)
 
             -- Early return if the command was handled internally (e.g. scan results only)
             if command == nil then return end

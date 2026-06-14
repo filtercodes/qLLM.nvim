@@ -39,6 +39,19 @@ CommandsList.CallbackTypes = {
     ["custom"] = nil,
 }
 
+---Checks if a given string matches a registered command name.
+---@param cmd string The command name to check.
+---@return boolean True if it's a valid command, false otherwise.
+function CommandsList.is_valid_cmd(cmd)
+    if vim.g.quickllm_commands_defaults and type(vim.g.quickllm_commands_defaults[cmd]) == "table" then
+        return true
+    end
+    if vim.g.quickllm_commands and type(vim.g.quickllm_commands[cmd]) == "table" then
+        return true
+    end
+    return false
+end
+
 function CommandsList.get_cmd_opts(cmd, overrides)
     -- Start with hardcoded defaults for all commands
     local opts = vim.deepcopy(cmd_default)
@@ -221,9 +234,9 @@ function CommandsList.complete(ArgLead, CmdLine, CursorPos)
     if sub_cmd == "files" or sub_cmd == "scan" or sub_cmd == "wiki_save" then
         local clean_lead = ArgLead
         local quote = ""
-        -- Handle leading quotes to allow users to group files containing spaces
-        if ArgLead:match("^[\"']") then
-            quote = ArgLead:sub(1, 1)
+        -- Handle leading brackets to allow users to group files
+        if ArgLead:match("^%[") then
+            quote = "["
             clean_lead = ArgLead:sub(2)
         end
 

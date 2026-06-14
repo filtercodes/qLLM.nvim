@@ -2,6 +2,7 @@ local curl = require("plenary.curl")
 local Utils = require("quickllm.utils")
 local Api = require("quickllm.api")
 local ContextEngine = require("quickllm.context_engine")
+local Logger = require("quickllm.logger")
 
 local KB = {}
 
@@ -516,6 +517,10 @@ end
 function KB.make_call(payload, user_msg, cb, bufnr)
     local kb_opts = vim.g.quickllm_kb_opts
     local query = payload.query
+
+    -- TRACE: Log the outgoing request
+    Logger.log_request("knowledge_base", "search", payload)
+
     local style = kb_opts.style
     local vec_path = kb_opts.sqlite_vec_path
     local has_vec = vec_path ~= "" and vim.fn.filereadable(vec_path) == 1
@@ -585,6 +590,8 @@ function KB.make_call(payload, user_msg, cb, bufnr)
         end
 
         local final_text = #results > 0 and table.concat(results, "\n") or "No relevant knowledge found."
+        -- TRACE: Log the final response
+        Logger.log_response("knowledge_base", "search", final_text)
         cb.on_chunk("[System: Knowledge Retrieval]\n\n" .. final_text, false)
         cb.on_complete(final_text)
     end)

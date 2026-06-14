@@ -4,6 +4,7 @@ local Utils = require("quickllm.utils")
 local Api = require("quickllm.api")
 local History = require("quickllm.history")
 local Ui = require("quickllm.ui")
+local Logger = require("quickllm.logger")
 
 OpenAIProvider = {}
 
@@ -161,6 +162,8 @@ function OpenAIProvider.handle_response(json, user_message_text, cb, bufnr)
         end
 
         if response_text ~= "" then
+            -- TRACE: Log the final response
+            Logger.log_response("openai", "legacy", response_text)
             History.add_message(bufnr, "user", user_message_text)
             History.add_message(bufnr, "assistant", response_text)
             if vim.g.quickllm_clear_visual_selection and vim.api.nvim_buf_is_valid(bufnr) then
@@ -179,6 +182,8 @@ function OpenAIProvider.handle_response(json, user_message_text, cb, bufnr)
             if type(response_text) ~= "string" or response_text == "" then
                 print("Error: No response text " .. type(response_text))
             else
+                -- TRACE: Log the final response
+                Logger.log_response("openai", "legacy", response_text)
                 -- Add history (Clean: only the answer)
                 History.add_message(bufnr, "user", user_message_text)
                 History.add_message(bufnr, "assistant", response_text)
@@ -204,8 +209,11 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
         url = vim.g.quickllm_openai_responses_url or "https://api.openai.com/v1/responses"
     end
     local headers = OpenAIProvider.make_headers()
-
     Api.run_started_hook()
+
+    -- TRACE: Log the outgoing request
+    Logger.log_request("openai", payload.command or "chat", payload)
+
 
     if type(cb) == "table" then
         -- Streaming Mode
@@ -229,6 +237,8 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
                 if not chunk then 
                     -- End of stream
                     vim.schedule(function()
+                        -- TRACE: Log the final response
+                        Logger.log_response("openai", payload.command or "chat", full_text)
                         cb.on_complete(full_text)
                         Api.run_finished_hook()
                     end)
@@ -257,18 +267,10 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
                     processed_segment_end = next_idx
 
                     if json then
-                        -- DEBUG: Show the raw JSON in a popup if enabled
-                        if vim.g.quickllm_debug_json then
-                            vim.schedule(function()
-                                Ui.popup(vim.split(vim.inspect(json), "\n"), "lua", bufnr)
-                            end)
-                            vim.g.quickllm_debug_json = false
-                        end
-
                         if json.error then
                             vim.schedule(function()
-                                Ui.popup(vim.split(vim.inspect(json), "\n"), "lua", bufnr)
-                                cb.on_error(json.error.message or "OpenAI Error")
+                                -- DELEGATION: All UI error rendering is now handled by the orchestration layer (commands.lua).
+                                cb.on_error(json.error)
                                 Api.run_finished_hook()
                             end)
                             return

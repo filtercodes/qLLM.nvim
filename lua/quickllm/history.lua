@@ -2,6 +2,7 @@
 -- This module manages the chat history on a per-buffer basis.
 
 local M = {}
+local Utils = require("quickllm.utils")
 
 -- In-memory store for chat history, keyed by buffer number.
 -- Each history is a list of messages.

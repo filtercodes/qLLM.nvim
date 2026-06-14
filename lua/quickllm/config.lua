@@ -276,9 +276,18 @@ vim.g.quickllm_ui_commands = {
     use_as_input = "<c-i>",
 }
 
+-- Does the popup close when clicking outside the windod
+if vim.g.quickllm_close_on_leave == nil then
+    vim.g.quickllm_close_on_leave = true
+end
+
 -- Additional way to quit popup with double escape (within 500ms)
 if vim.g.quickllm_quit_with_double_esc == nil then
     vim.g.quickllm_quit_with_double_esc = true
 end
+
+-- Troubleshooting & Debugging
+vim.g.quickllm_log_enabled = false
+vim.g.quickllm_debug = false
 
 vim.g.quickllm_ui_custom_commands = {}

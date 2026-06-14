@@ -126,6 +126,9 @@ function Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts
       render_timer:start(0, 100, vim.schedule_wrap(flush_buffer))
 
       -- Define Stream Handlers
+      -- Developer-First Error Pipeline.
+      -- We never leave the UI popup empty. All errors (API, Network, Empty Body)
+      -- are rendered directly into the buffer so the user has immediate diagnostic info.
       local stream_handlers = {
           on_chunk = function(text_chunk, is_thinking)
               -- IMPORTANT: We only perform table insertion here.
@@ -144,8 +147,14 @@ function Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts
 
               if is_first_chunk then
                   stop_spinner()
-                  -- Clear the spinner if no text was received
-                  vim.api.nvim_buf_set_lines(ui_bufnr, 0, -1, false, {})
+                  -- If the stream finished without any text chunks,
+                  vim.schedule(function()
+                    if vim.api.nvim_buf_is_valid(ui_bufnr) then
+                        vim.api.nvim_buf_set_lines(ui_bufnr, 0, -1, false, {
+                            "⚠️ Empty Response"
+                        })
+                    end
+                  end)
               end
               
               -- Final flush to ensure all text is rendered
@@ -177,7 +186,34 @@ function Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts
               vim.schedule(function()
                   flush_buffer()
                   stop_spinner()
-                  vim.notify("Stream Error: " .. tostring(err), vim.log.levels.ERROR)
+
+                  -- ARCHITECTURAL CHOICE: Render full error diagnostics into the UI.
+                  -- This prevents the "White Wall" effect and helps in debugging issues promptly
+                  -- i.e. going to the API providers website and buying more credits.
+                  if vim.api.nvim_buf_is_valid(ui_bufnr) then
+                      local error_msg = tostring(err)
+                      -- If error is a table (JSON), inspect it for better readability
+                      if type(err) == "table" then
+                          error_msg = vim.inspect(err)
+                      end
+
+                      local lines = {
+                          "# ❌ API ERROR",
+                          "",
+                          "```json",
+                      }
+                      for _, line in ipairs(vim.split(error_msg, "\n")) do
+                          table.insert(lines, line)
+                      end
+                      table.insert(lines, "```")
+
+                      -- Clear buffer and show error
+                      vim.api.nvim_buf_set_lines(ui_bufnr, 0, -1, false, lines)
+                      Ui.sync_window_size(ui_bufnr)
+                  else
+                    -- Fallback if buffer is gone
+                    vim.notify("QuickLLM Stream Error: " .. tostring(err), vim.log.levels.ERROR)
+                  end
               end)
           end
       }

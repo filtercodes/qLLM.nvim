@@ -4,6 +4,7 @@ local Utils = require("quickllm.utils")
 local Api = require("quickllm.api")
 local History = require("quickllm.history")
 local Ui = require("quickllm.ui")
+local Logger = require("quickllm.logger")
 
 GroqProvider = {}
 
@@ -80,6 +81,8 @@ function GroqProvider.handle_response(json, user_message_text, cb, bufnr)
             if type(response_text) ~= "string" or response_text == "" then
                 print("Error: No response text " .. type(response_text))
             else
+                -- TRACE: Log the final response
+                Logger.log_response("groq", "legacy", response_text)
                 History.add_message(bufnr, "user", user_message_text)
                 History.add_message(bufnr, "assistant", response_text)
 
@@ -98,13 +101,16 @@ end
 function GroqProvider.make_call(payload, user_message_text, cb, bufnr)
     local url = "https://api.groq.com/openai/v1/chat/completions"
     local headers = GroqProvider.make_headers()
-
     Api.run_started_hook()
+
+    -- TRACE: Log the outgoing request
+    Logger.log_request("groq", payload.command or "chat", payload)
 
     if type(cb) == "table" then
         -- Streaming Mode
         payload.stream = true
         local payload_str = vim.fn.json_encode(payload)
+
         local partial_data = ""
         local full_text = ""
 
@@ -114,16 +120,17 @@ function GroqProvider.make_call(payload, user_message_text, cb, bufnr)
             raw = { "--no-buffer" },
             stream = function(err, chunk)
                 if err then
-                    vim.schedule(function() 
-                        cb.on_error(err) 
+                    vim.schedule(function()
+                        cb.on_error(err)
                         Api.run_finished_hook()
                     end)
                     return
                 end
-                
-                if not chunk then
-                    -- End of stream
+
+                if not chunk then 
                     vim.schedule(function()
+                        -- TRACE: Log the final response
+                        Logger.log_response("groq", payload.command or "chat", full_text)
                         cb.on_complete(full_text)
                         Api.run_finished_hook()
                     end)
@@ -154,8 +161,8 @@ function GroqProvider.make_call(payload, user_message_text, cb, bufnr)
                     if json then
                         if json.error then
                             vim.schedule(function()
-                                Ui.popup(vim.split(vim.inspect(json), "\n"), "lua", bufnr)
-                                cb.on_error(json.error.message or "Groq Error")
+                                -- DELEGATION: All UI error rendering is now handled by the orchestration layer (commands.lua).
+                                cb.on_error(json.error)
                                 Api.run_finished_hook()
                             end)
                             return

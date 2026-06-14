@@ -10,11 +10,19 @@ function M.resolve_patterns(patterns)
     for _, pattern in ipairs(patterns) do
         -- Remove potential quotes from individual patterns if they were split naively
         local clean_pattern = pattern:gsub('^["\'`]', ''):gsub('["\'`]$', '')
-        local expanded = vim.fn.glob(clean_pattern, true, true)
-        for _, path in ipairs(expanded) do
-            if vim.fn.filereadable(path) == 1 and not seen[path] then
-                table.insert(files, path)
-                seen[path] = true
+
+        -- Support multiple files in a single quoted string (e.g. "src/a.lua src/b.lua")
+        local sub_patterns = vim.split(clean_pattern, "%s+")
+
+        for _, sub_pattern in ipairs(sub_patterns) do
+            if sub_pattern ~= "" then
+                local expanded = vim.fn.glob(vim.fn.expand(sub_pattern), true, true)
+                for _, path in ipairs(expanded) do
+                    if vim.fn.filereadable(path) == 1 and not seen[path] then
+                        table.insert(files, path)
+                        seen[path] = true
+                    end
+                end
             end
         end
     end
@@ -49,41 +57,43 @@ end
 
 ---Parses the input string to find delimited blocks, search queries, and prompt.
 ---Handles escaped characters like \" or \`.
----@param input string The full command input (e.g. 'files "file 1.lua" <my query> prompt')
+---@param input string The full command input (e.g. 'files [file 1.lua] "my query" prompt')
+---@param command string? The command being executed.
 ---@return table extracted List of strings from file delimiters.
----@return string? query Content from <query> brackets.
+---@return string? query Content from "query" brackets (only for scan).
 ---@return string remaining Everything else.
-function M.parse_input(input)
+function M.parse_input(input, command)
     local extracted = {}
     local remaining = input
     local query = nil
 
-    -- 1. Extract Bracketed Query <...>
-    -- This has precedence to avoid greediness with file delimiters
-    local q_start = remaining:find("<")
-    if q_start then
-        local q_content = ""
-        local i = q_start + 1
-        while i <= #remaining do
-            local char = remaining:sub(i, i)
-            if char == "\\" then
-                q_content = q_content .. (remaining:sub(i + 1, i + 1) or "")
-                i = i + 2
-            elseif char == ">" then
-                query = q_content
-                remaining = vim.trim(remaining:sub(1, q_start-1) .. " " .. remaining:sub(i + 1))
-                break
-            else
-                q_content = q_content .. char
-                i = i + 1
+    -- 1. Extract Quoted Query "..." (Only for scan command)
+    if command == "scan" then
+        local q_start = remaining:find('"')
+        if q_start then
+            local q_content = ""
+            local i = q_start + 1
+            while i <= #remaining do
+                local char = remaining:sub(i, i)
+                if char == "\\" then
+                    q_content = q_content .. (remaining:sub(i + 1, i + 1) or "")
+                    i = i + 2
+                elseif char == '"' then
+                    query = q_content
+                    remaining = vim.trim(remaining:sub(1, q_start-1) .. " " .. remaining:sub(i + 1))
+                    break
+                else
+                    q_content = q_content .. char
+                    i = i + 1
+                end
             end
         end
     end
 
-    -- 2. Extract File Blocks
+    -- 2. Extract File Blocks [...]
     local function extract_next_file(str)
         local delimiters = {
-            { '"', '"' }, { "'", "'" }, { '`', '`' }, { '(', ')' }
+            { '[', ']' }
         }
         
         for _, d in ipairs(delimiters) do
@@ -181,7 +191,7 @@ end
 
 ---Orchestrates context-based commands (files/scan/explain).
 ---@param command string The command name.
----@param fargs table The command arguments.
+---@param args_str string The raw command arguments string.
 ---@param current_bufnr number The current buffer.
 ---@param current_selection string? Optional current visual selection.
 ---@param overrides table? Optional overrides passed from the command runner.
@@ -189,11 +199,13 @@ end
 ---@return string command_args The prompt/arguments for the LLM.
 ---@return string text_selection The injected context.
 ---@return table overrides Table with history_user_message and ground_with_history.
-function M.handle_context_command(command, fargs, current_bufnr, current_selection, overrides)
+function M.handle_context_command(command, args_str, current_bufnr, current_selection, overrides)
     local CommandsList = require("quickllm.commands_list")
     local ProjectContext = require("quickllm.project_context")
-    local raw_input = table.concat(fargs, " ", 2)
-    local extracted_blocks, query, remaining_prompt = M.parse_input(raw_input)
+
+    -- Strip the command name from the beginning of the raw args string
+    local raw_input = vim.trim(args_str:sub(#command + 1))
+    local extracted_blocks, query, remaining_prompt = M.parse_input(raw_input, command)
     
     local context_text = ""
     local resolved_files = {}
@@ -214,6 +226,37 @@ function M.handle_context_command(command, fargs, current_bufnr, current_selecti
         end
     end
 
+    -- Fallback: If no files were wrapped in quotes, scan the prompt for raw paths
+    if #extracted_blocks == 0 and (command == "files" or command == "scan") then
+        local unquoted_files = {}
+        local new_remaining = {}
+        for word in remaining_prompt:gmatch("%S+") do
+            local expanded = vim.fn.glob(vim.fn.expand(word), true, true)
+            local is_file = false
+            for _, path in ipairs(expanded) do
+                if vim.fn.filereadable(path) == 1 then
+                    is_file = true
+                    break
+                end
+            end
+            if is_file then
+                table.insert(extracted_blocks, word)
+            else
+                table.insert(new_remaining, word)
+            end
+        end
+        remaining_prompt = table.concat(new_remaining, " ")
+    end
+
+    -- If there's no prompt explicitly typed after the files, but the user has selected text,
+    -- use the selected text as the prompt for the files (only for files/scan commands).
+    if (command == "files" or command == "scan") and remaining_prompt == "" and current_selection ~= "" then
+        -- We assume the visual selection in this context is meant to be the prompt/instructions
+        remaining_prompt = current_selection
+        -- Clear text_selection so it doesn't get injected twice
+        text_selection = ""
+    end
+
     if #extracted_blocks > 0 then
         resolved_files = M.resolve_patterns(extracted_blocks)
     elseif command == "scan" then
@@ -231,7 +274,7 @@ function M.handle_context_command(command, fargs, current_bufnr, current_selecti
                 history_prompt = "FILES: Explain " .. table.concat(extracted_blocks, ", ")
             else
                 local first_word = remaining_prompt:match("^(%S+)")
-                if first_word and CommandsList.get_cmd_opts(first_word) then
+                if first_word and CommandsList.is_valid_cmd(first_word) then
                     command = first_word
                     command_args = vim.trim(remaining_prompt:sub(#first_word + 1))
                     history_prompt = "FILES " .. first_word:upper() .. ": " .. command_args .. " (" .. #resolved_files .. " files)"
@@ -242,7 +285,9 @@ function M.handle_context_command(command, fargs, current_bufnr, current_selecti
                 end
             end
             overrides.history_user_message = history_prompt
-            text_selection = system_context .. context_text
+            -- Append original text_selection (if any remains) to the file context
+            local extra_selection = (text_selection ~= "") and ("\n[USER SELECTION]\n" .. text_selection) or ""
+            text_selection = system_context .. context_text .. extra_selection
         elseif command == "scan" then
             -- 1. Determine the search query (prioritize <query> brackets)
             local search_query = query or remaining_prompt

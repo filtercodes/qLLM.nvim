@@ -104,8 +104,8 @@ There are also configurable presets: `:Chat1`, `:Chat2`, and `:Chat3`. To quickl
 | edit  |  text selection + prompt | Asks LLM to apply the given instructions to the selected code in the editor. |
 | explain  |  text selection | Asks LLM to explain the selected code and return the answer in a text popup. |
 | init  |  none | Analyzes the local project and creates an architectural map (`quickLLM.md`) for the context orchestration. |
-| files  |  "file list" + prompt | Reads local project files (supports wildcards) and passes their content as context for the prompt. |
-| scan  |  "file list" + <query> + prompt | Performs a fast literal search or hybrid semantic search (if initialized) across local project files and sends relevant chunks to the LLM. |
+| files  |  [file list] + prompt | Reads local project files (supports wildcards) and passes their content as context for the prompt. |
+| scan  |  [file list] + "query" + prompt | Performs a fast literal search or hybrid semantic search (if initialized) across local project files and sends relevant chunks to the LLM. |
 | wiki  |  query | Performs a semantic search across your personal "Wiki" Knowledge Base using Hierarchical RAG. |
 | wiki_index  |  none | Scans your Wiki folder and performs a one-pass indexing with LLM-generated summaries and vectors. |
 | wiki_save  |  text selection or none | Saves current buffer or visual selection into the Wiki Knowledge Base for future retrieval. |
@@ -232,9 +232,9 @@ These commands allow you to inject arbitrary local project context or search res
 
 *   If you have manually initialized the project with `:Chat init`, QuickLLM creates an architectural map (`quickLLM.md`). The Context Engine will inject this map into the background context of the `files`, `scan`, and `explain` commands to give the LLM better project awareness.
 
-*   `:Chat files "file1.py file2.js *.md" [prompt]`: Reads multiple local files (supports wildcards and escaped quotes) and passes their content as the context for the prompt.
+*   `:Chat files [file1.py file2.js *.md] prompt`: Reads multiple local files (supports wildcards and escaped quotes) and passes their content as the context for the prompt.
     *   Note: If no prompt is provided, it defaults to the `explain` command for all files.
-*   `:Chat scan "src/*.lua" <query> [prompt]`: Performs a fast literal search or a hybrid semantic search (if `:Chat init` was run) across local project files for the `<query>` and sends the relevant chunks to the LLM for analysis.
+*   `:Chat scan [src/*.lua] "query" prompt`: Performs a fast literal search or a hybrid semantic search (if `:Chat init` was run) across local project files for the `"query"` and sends the relevant chunks to the LLM for analysis.
     *   Note: If no prompt is provided, it simply displays the search results in a local popup without calling the LLM. The result goes to the chat history so the next LLM inference can see it.
 
 ### The "Librarian" Architecture (Map & Territory)
@@ -430,6 +430,34 @@ vim.g.quickllm_commands_defaults1 = {
 ```
 
 Additionally, look into how to enable KV Cache, and for MacOS use [NVFP4](https://ollama.com/blog/mlx) models to utilise MLX framework natively.
+
+## Troubleshooting & Logging
+
+Enable logging to inspect the raw JSON payloads sent to and from the LLM providers.
+
+### Enabling Logs
+
+Logging can be enabled for the entire session or just for the next request.
+
+```lua
+-- Enable logging for the entire session
+vim.g.quickllm_log_enabled = true
+
+-- Enable "One-Shot" logging (logs only the next request, then disables itself)
+vim.g.quickllm_debug = true
+```
+
+### Viewing Logs
+
+Logs are written to a file in local Neovim state directory. Find the exact path by running `:lua print(require("quickllm.logger").get_log_path())`
+
+View in real-time:
+
+```bash
+tail -f ~/.local/state/nvim/quickllm.log
+```
+
+The logs contain full JSON request payload and the assistant response.
 
 ## Popup options
 

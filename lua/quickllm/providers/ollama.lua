@@ -4,6 +4,7 @@ local Utils = require("quickllm.utils")
 local Api = require("quickllm.api")
 local History = require("quickllm.history")
 local Ui = require("quickllm.ui")
+local Logger = require("quickllm.logger")
 
 OllaMaProvider = {}
 
@@ -160,6 +161,8 @@ function OllaMaProvider.handle_response(json, user_message_text, cb, bufnr)
                 -- Bulletproof non-streaming: strip thinking tags from final response
                 response_text = Utils.strip_thinking_tags(response_text)
 
+                -- TRACE: Log the final response
+                Logger.log_response("ollama", "legacy", response_text)
                 -- Add both user and assistant messages to history at the same time
                 History.add_message(bufnr, "user", user_message_text)
                 History.add_message(bufnr, "assistant", response_text)
@@ -205,6 +208,9 @@ function OllaMaProvider.make_call(payload, user_message_text, cb, bufnr)
     local headers = OllaMaProvider.make_headers()
     Api.run_started_hook()
 
+    -- TRACE: Log the outgoing request
+    Logger.log_request("ollama", payload.command or "chat", payload)
+
     if type(cb) == "table" then
         -- Streaming Mode
         payload.stream = true
@@ -233,6 +239,8 @@ function OllaMaProvider.make_call(payload, user_message_text, cb, bufnr)
                         if parser.tag_buffer ~= "" then
                             cb.on_chunk(parser.tag_buffer, parser.is_thinking)
                         end
+                        -- TRACE: Log the final response
+                        Logger.log_response("ollama", payload.command or "chat", full_text)
                         cb.on_complete(full_text)
                         Api.run_finished_hook()
                     end)
@@ -255,21 +263,11 @@ function OllaMaProvider.make_call(payload, user_message_text, cb, bufnr)
                         -- Handle Ollama API errors in the stream
                         if json.error then
                             vim.schedule(function()
-                                -- Show full JSON error in a popup for transparency
-                                Ui.popup(vim.split(vim.inspect(json), "\n"), "lua", bufnr)
+                                -- DELEGATION: All UI error rendering is now handled by the orchestration layer (commands.lua).
                                 cb.on_error(json.error)
                                 Api.run_finished_hook()
                             end)
                             return
-                        end
-
-                        -- DEBUG: Show the raw JSON in a popup if enabled
-                        if vim.g.quickllm_debug_json then
-                            vim.schedule(function()
-                                Ui.popup(vim.split(vim.inspect(json), "\n"), "lua", bufnr)
-                            end)
-                            -- Disable after first chunk to avoid popup spam
-                            vim.g.quickllm_debug_json = false 
                         end
 
                         if json.message then

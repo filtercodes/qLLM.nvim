@@ -4,6 +4,7 @@ local Utils = require("quickllm.utils")
 local Api = require("quickllm.api")
 local History = require("quickllm.history")
 local Ui = require("quickllm.ui")
+local Logger = require("quickllm.logger")
 
 AnthropicProvider = {}
 
@@ -98,8 +99,6 @@ function AnthropicProvider.make_headers(payload)
         end
     end
 
-    -- The thinking beta header is no longer required for Sonnet 4.6
-
     if #betas > 0 then
         headers["anthropic-beta"] = table.concat(betas, ",")
     end
@@ -114,6 +113,9 @@ function AnthropicProvider.make_call(payload, user_message_text, cb, bufnr)
 
     Api.run_started_hook()
 
+    -- TRACE: Log the outgoing request
+    Logger.log_request("anthropic", payload.command or "chat", payload)
+
     if type(cb) == "table" then
         local payload_str = vim.fn.json_encode(payload)
         local partial_data = ""
@@ -127,13 +129,6 @@ function AnthropicProvider.make_call(payload, user_message_text, cb, bufnr)
             raw = { "--no-buffer" },
             timeout = 30000,
             stream = function(err, chunk)
-                -- DIAGNOSTIC: Print raw chunks directly to the UI
-                if chunk then
-                    vim.schedule(function()
-                        -- vim.notify("RAW CHUNK: " .. tostring(chunk), vim.log.levels.INFO)
-                    end)
-                end
-
                 if err then
                     vim.schedule(function()
                         vim.notify("Anthropic Curl Error: " .. vim.inspect(err), vim.log.levels.ERROR)
@@ -150,6 +145,8 @@ function AnthropicProvider.make_call(payload, user_message_text, cb, bufnr)
                             full_text = full_text .. sources_text
                             cb.on_chunk(sources_text, false)
                         end
+                        -- TRACE: Log the final response
+                        Logger.log_response("anthropic", payload.command or "chat", full_text)
                         cb.on_complete(full_text)
                         Api.run_finished_hook()
                     end)
@@ -175,7 +172,6 @@ function AnthropicProvider.make_call(payload, user_message_text, cb, bufnr)
                             local maybe_str = vim.trim(string.sub(current_buffer, json_start_idx, end_line - 1))
                             if maybe_str == "" or maybe_str == "[DONE]" then
                                 processed_segment_end = end_line
-                                -- Need to skip trailing newlines logic below
                             else
                                 break -- It's not empty, not done, and not JSON. Wait for more.
                             end
@@ -186,18 +182,10 @@ function AnthropicProvider.make_call(payload, user_message_text, cb, bufnr)
                         processed_segment_end = next_idx
 
                         if json then
-                            -- DEBUG: Show the raw JSON in a popup if enabled
-                            if vim.g.quickllm_debug_json then
-                                vim.schedule(function()
-                                    Ui.popup(vim.split(vim.inspect(json), "\n"), "lua", bufnr)
-                                end)
-                                vim.g.quickllm_debug_json = false
-                            end
-
                             if json.type == "error" then
                                 vim.schedule(function()
-                                    Ui.popup(vim.split(vim.inspect(json), "\n"), "lua", bufnr)
-                                    cb.on_error(json.error.message or "Anthropic Error")
+                                    -- DELEGATION: All UI error rendering is now handled by the orchestration layer (commands.lua).
+                                    cb.on_error(json.error)
                                     Api.run_finished_hook()
                                 end)
                                 return
@@ -221,10 +209,6 @@ function AnthropicProvider.make_call(payload, user_message_text, cb, bufnr)
                                 elseif json.delta.type == "thinking_delta" and json.delta.thinking then
                                     -- Thinking is NOT added to full_text (clean history)
                                     cb.on_chunk(json.delta.thinking, true)
-                                elseif json.delta.type == "input_json_delta" and json.delta.partial_json then
-                                    -- cb.on_chunk(json.delta.partial_json)
-                                    -- Do not stream raw JSON tool queries to the UI.
-                                    -- This allows the spinner to continue running until the actual answer starts streaming.
                                 end
                             end
                         end
@@ -262,6 +246,8 @@ function AnthropicProvider.make_call(payload, user_message_text, cb, bufnr)
                         if ok and json and json.content then
                             local txt = ""
                             for _, b in ipairs(json.content) do if b.text then txt = txt .. b.text end end
+                            -- TRACE: Log the final response
+                            Logger.log_response("anthropic", "legacy", txt)
                             History.add_message(bufnr, "user", user_message_text)
                             History.add_message(bufnr, "assistant", txt)
                             cb(Utils.parse_lines(txt))

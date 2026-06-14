@@ -4,6 +4,7 @@ local Utils = require("quickllm.utils")
 local Api = require("quickllm.api")
 local History = require("quickllm.history")
 local Ui = require("quickllm.ui")
+local Logger = require("quickllm.logger")
 
 GeminiProvider = {}
 
@@ -161,6 +162,8 @@ function GeminiProvider.handle_response(json, user_message_text, cb, bufnr)
             end
 
             if response_text ~= "" then
+                -- TRACE: Log the final response
+                Logger.log_response("gemini", "legacy", response_text)
                 History.add_message(bufnr, "user", user_message_text)
                 History.add_message(bufnr, "assistant", response_text)
 
@@ -192,6 +195,9 @@ function GeminiProvider.make_call(payload, user_message_text, cb, bufnr)
     
     local headers = GeminiProvider.make_headers()
     Api.run_started_hook()
+
+    -- TRACE: Log the outgoing request
+    Logger.log_request("gemini", payload.command or "chat", payload)
 
     if type(cb) == "table" then
         -- Streaming Mode
@@ -228,6 +234,8 @@ function GeminiProvider.make_call(payload, user_message_text, cb, bufnr)
                         if full_text == "" then
                             vim.notify("Gemini returned empty text", vim.log.levels.WARN)
                         end
+                        -- TRACE: Log the final response
+                        Logger.log_response("gemini", payload.command or "chat", full_text)
                         cb.on_complete(full_text)
                         Api.run_finished_hook()
                     end)
@@ -259,8 +267,9 @@ function GeminiProvider.make_call(payload, user_message_text, cb, bufnr)
                     if json then
                         if json.error then
                             vim.schedule(function()
-                                vim.notify("Gemini API Error: " .. (json.error.message or "Unknown"), vim.log.levels.ERROR)
-                                cb.on_error(json.error.message or "Unknown")
+                                -- DELEGATION: All UI error rendering is now handled by the orchestration layer (commands.lua).
+                                cb.on_error(json.error)
+                                Api.run_finished_hook()
                             end)
                             break
                         end

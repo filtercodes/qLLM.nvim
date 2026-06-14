@@ -15,6 +15,8 @@ function Ui.save_cursor_pos_for_buf(ui_bufnr)
     local info = active_popups[ui_bufnr]
     if not info then return end
 
+    if not vim.api.nvim_buf_is_valid(ui_bufnr) then return end
+
     local recall_index = vim.b[ui_bufnr].quickllm_recall_index
     if not recall_index then return end
 
@@ -146,13 +148,23 @@ function Ui.create_window(filetype, bufnr, start_row, start_col, end_row, end_co
         Ui.sync_window_size(ui_bufnr)
     end
 
-    -- Event: BufLeave
-    ui_elem:on(event.BufLeave, function()
-        Ui.save_cursor_pos_for_buf(ui_bufnr)
-        ui_to_owner_map[ui_bufnr] = nil
-        active_popups[ui_bufnr] = nil
-        ui_elem:unmount()
-    end)
+    -- Event: Handle BufLeave - buffer cleanup and unmounting
+    if vim.g.quickllm_close_on_leave then
+        -- Default: Close when clicking away/switching buffers
+        ui_elem:on(event.BufLeave, function()
+            Ui.save_cursor_pos_for_buf(ui_bufnr)
+            ui_to_owner_map[ui_bufnr] = nil
+            active_popups[ui_bufnr] = nil
+            ui_elem:unmount()
+        end)
+    else
+        -- Persistent: Only clean up state when explicitly closed (via q, <esc>, etc.)
+        ui_elem:on(event.BufDelete, function()
+            Ui.save_cursor_pos_for_buf(ui_bufnr)
+            ui_to_owner_map[ui_bufnr] = nil
+            active_popups[ui_bufnr] = nil
+        end)
+    end
 
     -- Mappings
     ui_elem:map("n", vim.g.quickllm_ui_commands.quit, function()
