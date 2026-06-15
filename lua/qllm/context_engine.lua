@@ -153,7 +153,7 @@ end
 function M.scan_search(files, query, context_lines)
     local results = ""
     -- Use global variable for context or default to 3
-    local kb_opts = vim.g.quickllm_kb_opts
+    local kb_opts = vim.g.qllm_kb_opts
     local ctx = context_lines or (kb_opts and kb_opts.scan_context) or 3
     
     for _, path in ipairs(files) do
@@ -205,8 +205,8 @@ end
 ---@return string text_selection The injected context.
 ---@return table overrides Table with history_user_message and ground_with_history.
 function M.handle_context_command(command, args_str, current_bufnr, current_selection, overrides)
-    local CommandsList = require("quickllm.commands_list")
-    local ProjectContext = require("quickllm.project_context")
+    local CommandsList = require("qllm.commands_list")
+    local ProjectContext = require("qllm.project_context")
 
     local is_explicit_cmd = CommandsList.is_valid_cmd(command)
 
@@ -229,7 +229,7 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
     local system_context = ""
     if project_map then
         system_context = "\n[SYSTEM PROJECT CONTEXT]\n" .. project_map .. "\n---\n"
-        local kb_opts = vim.g.quickllm_kb_opts
+        local kb_opts = vim.g.qllm_kb_opts
         if kb_opts and kb_opts.auto_check_freshness then
             ProjectContext.check_freshness()
         end
@@ -312,8 +312,8 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
                     overrides.history_user_message = "SCAN: '" .. search_query .. "' in " .. table.concat(extracted_blocks, ", ")
                 else
                     -- No prompt provided: Just display results in a popup, bypass LLM.
-                    local Ui = require("quickllm.ui")
-                    local Utils = require("quickllm.utils")
+                    local Ui = require("qllm.ui")
+                    local Utils = require("qllm.utils")
                     local lines = Utils.parse_lines(context_text)
                     if #lines == 0 then table.insert(lines, "No matches found for: " .. search_query) end
                     

@@ -1,14 +1,14 @@
 -- add public vim commands
-require("quickllm.config")
-local QuickllmModule = require("quickllm")
+require("qllm.config")
+local qllmModule = require("qllm")
 local function create_command(name)
     vim.api.nvim_create_user_command(name, function(opts)
         opts.name = name
-        return QuickllmModule.run_cmd(opts)
+        return qllmModule.run_cmd(opts)
     end, {
         range = true,
         nargs = "*",
-        complete = require("quickllm.commands_list").complete,
+        complete = require("qllm.commands_list").complete,
     })
 end
 
@@ -26,12 +26,12 @@ create_command("Groq")
 -- Prevents accidental execution of files/scan commands if a bracket [ is unclosed.
 -- Allows using Enter to select files from the completion menu.
 vim.keymap.set("c", "<CR>", function()
-    return require("quickllm.utils").handle_cmdline_enter()
+    return require("qllm.utils").handle_cmdline_enter()
 end, { expr = true })
 
 
-vim.api.nvim_create_user_command("QuickllmStatus", function(opts)
-	return QuickllmModule.get_status(opts)
+vim.api.nvim_create_user_command("QLLMStatus", function(opts)
+	return qllmModule.get_status(opts)
 end, {
 	range = true,
 	nargs = "*",

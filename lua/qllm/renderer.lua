@@ -1,5 +1,5 @@
-local Api = require("quickllm.api")
-local Window = require("quickllm.window")
+local Api = require("qllm.api")
+local Window = require("qllm.window")
 
 local Renderer = {}
 
@@ -9,7 +9,7 @@ function Renderer.start_spinner(bufnr, loading_message, info)
     local idx = 1
     local timer = vim.loop.new_timer()
     local start_time = vim.loop.now()
-    local ns_id = vim.api.nvim_create_namespace("quickllm_spinner")
+    local ns_id = vim.api.nvim_create_namespace("qllm_spinner")
     
     -- Initial set
     if vim.api.nvim_buf_is_valid(bufnr) then
@@ -107,7 +107,7 @@ function Renderer.append_to_buf(bufnr, text_chunk, is_thinking, info)
     -- Thinking Highlight
     if is_thinking then
         local end_line = vim.api.nvim_buf_line_count(bufnr) - 1
-        local ns_id = vim.api.nvim_create_namespace("quickllm_thinking")
+        local ns_id = vim.api.nvim_create_namespace("qllm_thinking")
         local final_lines = vim.api.nvim_buf_get_lines(bufnr, end_line, end_line + 1, false)
         local final_col = #final_lines[1]
 

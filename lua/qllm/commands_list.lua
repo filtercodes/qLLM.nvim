@@ -1,5 +1,5 @@
-local Utils = require("quickllm.utils")
-local Ui = require("quickllm.ui")
+local Utils = require("qllm.utils")
+local Ui = require("qllm.ui")
 
 local CommandsList = {}
 local cmd_default = {
@@ -14,12 +14,8 @@ local cmd_default = {
 
 CommandsList.CallbackTypes = {
     ["text_popup"] = function(lines, bufnr, start_row, start_col, end_row, end_col)
-        local popup_filetype = vim.g.quickllm_text_popup_filetype
+        local popup_filetype = vim.g.qllm_text_popup_filetype
         Ui.popup(lines, popup_filetype, bufnr, start_row, start_col, end_row, end_col)
-    end,
-    ["code_popup"] = function(lines, bufnr, start_row, start_col, end_row, end_col)
-        Utils.fix_indentation(bufnr, start_row, end_row, lines)
-        Ui.popup(lines, Utils.get_filetype(), bufnr, start_row, start_col, end_row, end_col)
     end,
     ["replace_lines"] = function(lines, bufnr, start_row, start_col, end_row, end_col)
         -- Structural extraction via Tree-sitter
@@ -43,10 +39,10 @@ CommandsList.CallbackTypes = {
 ---@param cmd string The command name to check.
 ---@return boolean True if it's a valid command, false otherwise.
 function CommandsList.is_valid_cmd(cmd)
-    if vim.g.quickllm_commands_defaults and type(vim.g.quickllm_commands_defaults[cmd]) == "table" then
+    if vim.g.qllm_commands_defaults and type(vim.g.qllm_commands_defaults[cmd]) == "table" then
         return true
     end
-    if vim.g.quickllm_commands and type(vim.g.quickllm_commands[cmd]) == "table" then
+    if vim.g.qllm_commands and type(vim.g.qllm_commands[cmd]) == "table" then
         return true
     end
     return false
@@ -60,27 +56,27 @@ function CommandsList.get_cmd_opts(cmd, overrides)
 
     -- Resolve Provider Name
     local provider_name = (overrides and overrides.provider) 
-        or vim.g["quickllm_api_provider" .. preset_suffix]
-        or vim.g.quickllm_api_provider 
+        or vim.g["qllm_api_provider" .. preset_suffix]
+        or vim.g.qllm_api_provider 
         or "openai"
     provider_name = string.lower(provider_name)
 
     -- Merge provider defaults (Global fallback)
-    local global_provider_defaults = vim.g.quickllm_provider_defaults or {}
+    local global_provider_defaults = vim.g.qllm_provider_defaults or {}
     if global_provider_defaults[provider_name] then
         opts = vim.tbl_extend("force", opts, global_provider_defaults[provider_name])
     end
 
     -- Merge preset-specific provider defaults (Higher precedence)
     if preset_suffix ~= "" then
-        local preset_provider_defaults = vim.g["quickllm_provider_defaults" .. preset_suffix] or {}
+        local preset_provider_defaults = vim.g["qllm_provider_defaults" .. preset_suffix] or {}
         if preset_provider_defaults[provider_name] then
             opts = vim.tbl_extend("force", opts, preset_provider_defaults[provider_name])
         end
     end
 
     -- 1. Merge Base Unified Defaults (The global templates and settings)
-    local base_defaults = vim.g.quickllm_commands_defaults
+    local base_defaults = vim.g.qllm_commands_defaults
     if base_defaults and type(base_defaults) == "table" then
         local config_table = vim.deepcopy(base_defaults)
         
@@ -100,7 +96,7 @@ function CommandsList.get_cmd_opts(cmd, overrides)
 
     -- 2. Merge Preset-Specific Unified Defaults (Overrides for this specific preset)
     if preset_suffix ~= "" then
-        local preset_defaults = vim.g["quickllm_commands_defaults" .. preset_suffix]
+        local preset_defaults = vim.g["qllm_commands_defaults" .. preset_suffix]
         if preset_defaults and type(preset_defaults) == "table" then
             local config_table = vim.deepcopy(preset_defaults)
 
@@ -124,7 +120,7 @@ function CommandsList.get_cmd_opts(cmd, overrides)
                 -- Handle Per-Command Provider Overrides in the preset
                 if cmd_overrides.provider and not (overrides and overrides.provider) then
                     provider_name = string.lower(cmd_overrides.provider)
-                    local new_provider_defaults = (vim.g.quickllm_provider_defaults or {})[provider_name] or {}
+                    local new_provider_defaults = (vim.g.qllm_provider_defaults or {})[provider_name] or {}
                     opts = vim.tbl_extend("force", opts, new_provider_defaults)
                 end
                 opts = vim.tbl_extend("force", opts, cmd_overrides)
@@ -136,7 +132,7 @@ function CommandsList.get_cmd_opts(cmd, overrides)
     opts.provider = provider_name
 
     -- Merge user-defined commands (extra flexibility)
-    local user_cmd_opts = (vim.g.quickllm_commands or {})[cmd]
+    local user_cmd_opts = (vim.g.qllm_commands or {})[cmd]
     if user_cmd_opts ~= nil then
         opts = vim.tbl_extend("force", opts, user_cmd_opts)
     end
@@ -144,17 +140,17 @@ function CommandsList.get_cmd_opts(cmd, overrides)
     -- Handle decoupled search model logic
     if opts.is_search_command then
         local search_provider = (overrides and overrides.search_provider) 
-            or vim.g["quickllm_search_provider" .. preset_suffix]
-            or vim.g.quickllm_search_provider
+            or vim.g["qllm_search_provider" .. preset_suffix]
+            or vim.g.qllm_search_provider
             or "gemini"
 
         -- Get default search model settings for this provider
-        local search_model_defaults = vim.g.quickllm_search_model_defaults or {}
+        local search_model_defaults = vim.g.qllm_search_model_defaults or {}
         local provider_search_settings = search_model_defaults[search_provider] or {}
         local default_search_model = provider_search_settings.model
 
         -- Safely fetch generic global search model
-        local global_search_model = vim.g["quickllm_search_model" .. preset_suffix] or vim.g.quickllm_search_model
+        local global_search_model = vim.g["qllm_search_model" .. preset_suffix] or vim.g.qllm_search_model
         
         -- If an explicit provider was requested (e.g., :Gemini), strip the generic global search model
         -- because we must use the provider's specific search model we just loaded.
@@ -173,9 +169,9 @@ function CommandsList.get_cmd_opts(cmd, overrides)
     -- Model is configured?
     if opts.model == nil or opts.model == "" then
         vim.notify(
-            "QuickLLM.vim: Model not configured for command '"
+            "qLLM.vim: Model not configured for command '"
                 .. cmd
-                .. "'. Please set it in vim.g.quickllm_commands or vim.g.quickllm_commands_defaults",
+                .. "'. Please set it in vim.g.qllm_commands or vim.g.qllm_commands_defaults",
             vim.log.levels.ERROR
         )
         return nil
@@ -210,12 +206,12 @@ function CommandsList.complete(ArgLead, CmdLine, CursorPos)
     -- If we are still typing the first argument (sub-command)
     if #parts == 1 or (#parts == 2 and not ends_with_space) then
         local cmd = {}
-        for k, v in pairs(vim.g.quickllm_commands_defaults or {}) do
+        for k, v in pairs(vim.g.qllm_commands_defaults or {}) do
             if type(v) == "table" then
                 table.insert(cmd, k)
             end
         end
-        for k in pairs(vim.g.quickllm_commands or {}) do
+        for k in pairs(vim.g.qllm_commands or {}) do
             table.insert(cmd, k)
         end
 

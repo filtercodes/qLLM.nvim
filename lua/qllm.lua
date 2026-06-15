@@ -1,9 +1,9 @@
-local Commands = require("quickllm.commands")
-local CommandsList = require("quickllm.commands_list")
-local Utils = require("quickllm.utils")
-local Ui = require("quickllm.ui")
-local History = require("quickllm.history")
-local QuickllmModule = {}
+local Commands = require("qllm.commands")
+local CommandsList = require("qllm.commands_list")
+local Utils = require("qllm.utils")
+local Ui = require("qllm.ui")
+local History = require("qllm.history")
+local qllmModule = {}
 
 local function has_command_args(opts)
     local pattern = "%{%{command_args%}%}"
@@ -11,11 +11,11 @@ local function has_command_args(opts)
         or string.find(opts.system_message_template or "", pattern)
 end
 
-function QuickllmModule.get_status(...)
+function qllmModule.get_status(...)
     return Commands.get_status(...)
 end
 
-function QuickllmModule.run_cmd(opts)
+function qllmModule.run_cmd(opts)
     local text_selection = Utils.get_selected_lines()
     local command_args = table.concat(opts.fargs, " ")
     local command = opts.fargs[1]
@@ -37,9 +37,9 @@ function QuickllmModule.run_cmd(opts)
     -- 1. HANDLE UTILITY COMMANDS (Early Return)
     if command == "clear" and #opts.fargs == 1 then
         History.clear_history(bufnr)
-        vim.b[bufnr].quickllm_metadata = nil
+        vim.b[bufnr].qllm_metadata = nil
         Ui.close_active_popup(current_bufnr)
-        vim.notify("Chat history cleared for this buffer.", vim.log.levels.INFO, { title = "QuickLLM" })
+        vim.notify("Chat history cleared for this buffer.", vim.log.levels.INFO, { title = "qLLM" })
         return -- Stop all further processing
     end
 
@@ -60,10 +60,10 @@ function QuickllmModule.run_cmd(opts)
                 recall_offset = num
             elseif arg == "backward" then
                 is_recall_action = true
-                recall_offset = (vim.b[bufnr].quickllm_recall_index or 0) + 1
+                recall_offset = (vim.b[bufnr].qllm_recall_index or 0) + 1
             elseif arg == "forward" then
                 is_recall_action = true
-                recall_offset = math.max(1, (vim.b[bufnr].quickllm_recall_index or 1) - 1)
+                recall_offset = math.max(1, (vim.b[bufnr].qllm_recall_index or 1) - 1)
             end
         end
     end
@@ -75,18 +75,18 @@ function QuickllmModule.run_cmd(opts)
         if display_text then
             if not show_question then
                 -- Only store index and metadata if we are showing the answer (Pro features)
-                vim.b[bufnr].quickllm_recall_index = recall_offset
-                vim.b[bufnr].quickllm_metadata = { model = model, command = cmd }
+                vim.b[bufnr].qllm_recall_index = recall_offset
+                vim.b[bufnr].qllm_metadata = { model = model, command = cmd }
             else
                 -- If showing question, ensure we don't save cursor on close
-                vim.b[bufnr].quickllm_recall_index = nil
+                vim.b[bufnr].qllm_recall_index = nil
             end
             
             local start_row, start_col, end_row, end_col = Utils.get_visual_selection()
-            Ui.popup(Utils.parse_lines(display_text), vim.g.quickllm_text_popup_filetype, bufnr, start_row, start_col, end_row, end_col, (not show_question and cursor_pos or nil))
+            Ui.popup(Utils.parse_lines(display_text), vim.g.qllm_text_popup_filetype, bufnr, start_row, start_col, end_row, end_col, (not show_question and cursor_pos or nil))
         else
             local msg = show_question and "question" or "assistant response"
-            vim.notify(string.format("No %s found at history index %d for this buffer.", msg, recall_offset), vim.log.levels.WARN, { title = "QuickLLM" })
+            vim.notify(string.format("No %s found at history index %d for this buffer.", msg, recall_offset), vim.log.levels.WARN, { title = "qLLM" })
         end
         return
     end
@@ -95,37 +95,37 @@ function QuickllmModule.run_cmd(opts)
     if is_undo and #opts.fargs == 1 then
         local success = History.undo_last_exchange(bufnr)
         if success then
-            vim.notify("Last conversation exchange removed from history.", vim.log.levels.INFO, { title = "QuickLLM" })
+            vim.notify("Last conversation exchange removed from history.", vim.log.levels.INFO, { title = "qLLM" })
         else
-            vim.notify("No history to undo.", vim.log.levels.WARN, { title = "QuickLLM" })
+            vim.notify("No history to undo.", vim.log.levels.WARN, { title = "qLLM" })
         end
         return
     end
 
     -- Handle `help` as a special case
     if command == "help" and #opts.fargs == 1 then
-        local Help = require("quickllm.help")
+        local Help = require("qllm.help")
         Help.show_help(bufnr)
         return
     end
 
     -- Handle `wiki_index` as a special case
     if command == "wiki_index" then
-        local KB = require("quickllm.providers.knowledge_base")
+        local KB = require("qllm.providers.knowledge_base")
         KB.wiki_index()
         return
     end
 
     -- Handle `wiki_lint` as a special case
     if command == "wiki_lint" then
-        local KB = require("quickllm.providers.knowledge_base")
+        local KB = require("qllm.providers.knowledge_base")
         KB.wiki_lint()
         return
     end
 
     -- Handle `wiki_save` as a special case
     if command == "wiki_save" then
-        local KB = require("quickllm.providers.knowledge_base")
+        local KB = require("qllm.providers.knowledge_base")
         local filename = opts.fargs[2]
         if not filename then
             vim.notify("Usage: :Chat wiki_save <filename.md>", vim.log.levels.ERROR)
@@ -137,7 +137,7 @@ function QuickllmModule.run_cmd(opts)
 
     -- Handle `init` as a special case
     if command == "init" then
-        local ProjectContext = require("quickllm.project_context")
+        local ProjectContext = require("qllm.project_context")
         ProjectContext.init_project()
         return
     end
@@ -171,7 +171,7 @@ function QuickllmModule.run_cmd(opts)
 
     -- 3. EXECUTION PIPELINE
     local function execute_with_fresh_context()
-        local ContextEngine = require("quickllm.context_engine")
+        local ContextEngine = require("qllm.context_engine")
 
         -- Universal Context Resolution (Files, Selection, Project Map)
         local resolved_command, resolved_command_args, resolved_text_selection, resolved_overrides = 
@@ -189,7 +189,7 @@ function QuickllmModule.run_cmd(opts)
 
         if command == nil or command == "" or cmd_opts == nil then
             vim.notify("No valid command or options found for: " .. (command or "unknown"), vim.log.levels.ERROR, {
-                title = "QuickLLM",
+                title = "qLLM",
             })
             return
         end
@@ -197,7 +197,7 @@ function QuickllmModule.run_cmd(opts)
         -- Check if command requires context (selection or files)
         if not cmd_opts.allow_empty_text_selection and (text_selection == nil or text_selection == "") then
             vim.notify("This command (" .. command .. ") requires a visual selection or file context.", vim.log.levels.WARN, {
-                title = "QuickLLM",
+                title = "qLLM",
             })
             return
         end
@@ -210,31 +210,31 @@ function QuickllmModule.run_cmd(opts)
         or opts.args:find("%[") ~= nil -- Prompt contains file blocks
 
     if is_context_heavy then
-        local ProjectContext = require("quickllm.project_context")
+        local ProjectContext = require("qllm.project_context")
         ProjectContext.ensure_fresh_context(execute_with_fresh_context)
     else
         execute_with_fresh_context()
     end
 end
 
-function QuickllmModule.recall(arg)
+function qllmModule.recall(arg)
     local fargs = { "recall" }
     if arg then table.insert(fargs, tostring(arg)) end
-    return QuickllmModule.run_cmd({ fargs = fargs, name = "Chat" })
+    return qllmModule.run_cmd({ fargs = fargs, name = "Chat" })
 end
 
-function QuickllmModule.undo()
-    return QuickllmModule.run_cmd({ fargs = { "undo" }, name = "Chat" })
+function qllmModule.undo()
+    return qllmModule.run_cmd({ fargs = { "undo" }, name = "Chat" })
 end
 
-function QuickllmModule.clear()
-    return QuickllmModule.run_cmd({ fargs = { "clear" }, name = "Chat" })
+function qllmModule.clear()
+    return qllmModule.run_cmd({ fargs = { "clear" }, name = "Chat" })
 end
 
-function QuickllmModule.adjust_popup_size(delta_w, delta_h)
-    local Window = require("quickllm.window")
+function qllmModule.adjust_popup_size(delta_w, delta_h)
+    local Window = require("qllm.window")
     Window.update_global_layout(delta_w, delta_h)
     return Ui.refresh_active_popup()
 end
 
-return QuickllmModule
+return qllmModule

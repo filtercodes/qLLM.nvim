@@ -154,7 +154,7 @@ function Utils.strip_broken_fences(lines)
 end
 
 function Utils.parse_lines(response_text)
-    if vim.g.quickllm_write_response_to_err_log then
+    if vim.g.qllm_write_response_to_err_log then
         vim.api.nvim_err_write("Response: \n" .. response_text .. "\n")
     end
 

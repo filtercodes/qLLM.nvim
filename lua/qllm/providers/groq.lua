@@ -1,10 +1,10 @@
 local curl = require("plenary.curl")
-local Render = require("quickllm.template_render")
-local Utils = require("quickllm.utils")
-local Api = require("quickllm.api")
-local History = require("quickllm.history")
-local Ui = require("quickllm.ui")
-local Logger = require("quickllm.logger")
+local Render = require("qllm.template_render")
+local Utils = require("qllm.utils")
+local Api = require("qllm.api")
+local History = require("qllm.history")
+local Ui = require("qllm.ui")
+local Logger = require("qllm.logger")
 
 GroqProvider = {}
 
@@ -88,7 +88,7 @@ function GroqProvider.handle_response(json, user_message_text, cb, bufnr)
                 History.add_message(bufnr, "user", user_message_text)
                 History.add_message(bufnr, "assistant", response_text)
 
-                if vim.g.quickllm_clear_visual_selection and vim.api.nvim_buf_is_valid(bufnr) then
+                if vim.g.qllm_clear_visual_selection and vim.api.nvim_buf_is_valid(bufnr) then
                     vim.api.nvim_buf_set_mark(bufnr, "<", 0, 0, {})
                     vim.api.nvim_buf_set_mark(bufnr, ">", 0, 0, {})
                 end

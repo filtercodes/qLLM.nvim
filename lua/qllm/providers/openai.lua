@@ -1,10 +1,10 @@
 local curl = require("plenary.curl")
-local Render = require("quickllm.template_render")
-local Utils = require("quickllm.utils")
-local Api = require("quickllm.api")
-local History = require("quickllm.history")
-local Ui = require("quickllm.ui")
-local Logger = require("quickllm.logger")
+local Render = require("qllm.template_render")
+local Utils = require("qllm.utils")
+local Api = require("qllm.api")
+local History = require("qllm.history")
+local Ui = require("qllm.ui")
+local Logger = require("qllm.logger")
 
 OpenAIProvider = {}
 
@@ -29,7 +29,7 @@ function OpenAIProvider.make_request(command, cmd_opts, command_args, text_selec
     end
 
     local include_history = true
-    if cmd_opts.is_search_command and vim.g.quickllm_ground_with_history == false then
+    if cmd_opts.is_search_command and vim.g.qllm_ground_with_history == false then
         include_history = false
     end
 
@@ -119,10 +119,10 @@ local function curl_callback(response, user_message_text, cb, bufnr)
 end
 
 function OpenAIProvider.make_headers(payload)
-    local token = vim.g.quickllm_openai_api_key or os.getenv("OPENAI_API_KEY")
+    local token = vim.g.qllm_openai_api_key or os.getenv("OPENAI_API_KEY")
     if not token then
         error(
-            "OpenAIApi Key not found, set in vim with 'quickllm_openai_api_key' or as the env variable 'OPENAI_API_KEY'"
+            "OpenAIApi Key not found, set in vim with 'qllm_openai_api_key' or as the env variable 'OPENAI_API_KEY'"
         )
     end
 
@@ -165,14 +165,14 @@ function OpenAIProvider.handle_response(json, user_message_text, cb, bufnr)
             end
         end
 
-        if #sources > 0 and vim.g.quickllm_show_search_sources then
+        if #sources > 0 and vim.g.qllm_show_search_sources then
             response_text = response_text .. "\n\n**Sources:**\n" .. table.concat(sources, "\n")
         end
 
         if response_text ~= "" then
             History.add_message(bufnr, "user", user_message_text)
             History.add_message(bufnr, "assistant", response_text)
-            if vim.g.quickllm_clear_visual_selection and vim.api.nvim_buf_is_valid(bufnr) then
+            if vim.g.qllm_clear_visual_selection and vim.api.nvim_buf_is_valid(bufnr) then
                 vim.api.nvim_buf_set_mark(bufnr, "<", 0, 0, {})
                 vim.api.nvim_buf_set_mark(bufnr, ">", 0, 0, {})
             end
@@ -192,7 +192,7 @@ function OpenAIProvider.handle_response(json, user_message_text, cb, bufnr)
                 History.add_message(bufnr, "user", user_message_text)
                 History.add_message(bufnr, "assistant", response_text)
 
-                if vim.g.quickllm_clear_visual_selection and vim.api.nvim_buf_is_valid(bufnr) then
+                if vim.g.qllm_clear_visual_selection and vim.api.nvim_buf_is_valid(bufnr) then
                     vim.api.nvim_buf_set_mark(bufnr, "<", 0, 0, {})
                     vim.api.nvim_buf_set_mark(bufnr, ">", 0, 0, {})
                 end
@@ -207,10 +207,10 @@ function OpenAIProvider.handle_response(json, user_message_text, cb, bufnr)
 end
 
 function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
-    local url = vim.g.quickllm_chat_completions_url
+    local url = vim.g.qllm_chat_completions_url
     -- If the payload uses "input" (Responses API) instead of "messages" (Chat API)
     if payload.input then
-        url = vim.g.quickllm_openai_responses_url or "https://api.openai.com/v1/responses"
+        url = vim.g.qllm_openai_responses_url or "https://api.openai.com/v1/responses"
     end
     local headers = OpenAIProvider.make_headers(payload)
     Api.run_started_hook()
@@ -326,7 +326,7 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
                                     end
                                 end
                             end
-                            if #sources > 0 and vim.g.quickllm_show_search_sources then
+                            if #sources > 0 and vim.g.qllm_show_search_sources then
                                 local sources_text = "\n\n**Sources:**\n" .. table.concat(sources, "\n")
                                 -- Sources are added to history
                                 full_text = full_text .. sources_text

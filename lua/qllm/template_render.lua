@@ -1,4 +1,4 @@
-local Utils = require("quickllm.utils")
+local Utils = require("qllm.utils")
 
 local Render = {}
 

@@ -1,6 +1,6 @@
 local event = require("nui.utils.autocmd").event
-local Window = require("quickllm.window")
-local Renderer = require("quickllm.renderer")
+local Window = require("qllm.window")
+local Renderer = require("qllm.renderer")
 
 local Ui = {}
 
@@ -17,13 +17,13 @@ function Ui.save_cursor_pos_for_buf(ui_bufnr)
 
     if not vim.api.nvim_buf_is_valid(ui_bufnr) then return end
 
-    local recall_index = vim.b[ui_bufnr].quickllm_recall_index
+    local recall_index = vim.b[ui_bufnr].qllm_recall_index
     if not recall_index then return end
 
     local winid = vim.fn.bufwinid(ui_bufnr)
     if winid ~= -1 then
         local cursor = vim.api.nvim_win_get_cursor(winid)
-        local History = require("quickllm.history")
+        local History = require("qllm.history")
         History.save_cursor_pos(info.owner, recall_index, cursor)
     end
 end
@@ -58,14 +58,14 @@ function Ui.get_active_status_info(bufnr)
 
     -- Return metadata if the target buffer is an active popup
     if active_popups[target_bufnr] then
-        local metadata = vim.b[target_bufnr] and vim.b[target_bufnr].quickllm_metadata
+        local metadata = vim.b[target_bufnr] and vim.b[target_bufnr].qllm_metadata
         if metadata then
             return metadata.command, metadata.model
         end
     end
 
     -- Fallback: If no active popup, check the buffer itself (for direct edits)
-    local metadata = vim.b[bufnr] and vim.b[bufnr].quickllm_metadata
+    local metadata = vim.b[bufnr] and vim.b[bufnr].qllm_metadata
     if metadata then
         return metadata.command, metadata.model
     end
@@ -107,7 +107,7 @@ function Ui.create_window(filetype, bufnr, start_row, start_col, end_row, end_co
     -- Close any existing popup for this owner before opening a new one
     Ui.close_active_popup(bufnr)
 
-    local popup_type = vim.g.quickllm_popup_type
+    local popup_type = vim.g.qllm_popup_type
     local ui_elem, max_h, max_row, max_w, col
 
     if popup_type == "horizontal" then
@@ -125,8 +125,8 @@ function Ui.create_window(filetype, bufnr, start_row, start_col, end_row, end_co
 
     -- Metadata inheritance
     if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
-        vim.b[ui_bufnr].quickllm_metadata = vim.b[bufnr].quickllm_metadata
-        vim.b[ui_bufnr].quickllm_recall_index = vim.b[bufnr].quickllm_recall_index
+        vim.b[ui_bufnr].qllm_metadata = vim.b[bufnr].qllm_metadata
+        vim.b[ui_bufnr].qllm_recall_index = vim.b[bufnr].qllm_recall_index
     end
 
     -- State registration
@@ -149,7 +149,7 @@ function Ui.create_window(filetype, bufnr, start_row, start_col, end_row, end_co
     end
 
     -- Event: Handle BufLeave - buffer cleanup and unmounting
-    if vim.g.quickllm_close_on_leave then
+    if vim.g.qllm_close_on_leave then
         -- Default: Close when clicking away/switching buffers
         ui_elem:on(event.BufLeave, function()
             Ui.save_cursor_pos_for_buf(ui_bufnr)
@@ -167,11 +167,11 @@ function Ui.create_window(filetype, bufnr, start_row, start_col, end_row, end_co
     end
 
     -- Mappings
-    ui_elem:map("n", vim.g.quickllm_ui_commands.quit, function()
+    ui_elem:map("n", vim.g.qllm_ui_commands.quit, function()
         ui_elem:unmount()
     end, { noremap = true, silent = true })
 
-    if vim.g.quickllm_quit_with_double_esc then
+    if vim.g.qllm_quit_with_double_esc then
         local last_esc_time = 0
         ui_elem:map("n", "<esc>", function()
             local now = vim.loop.now()
@@ -185,17 +185,17 @@ function Ui.create_window(filetype, bufnr, start_row, start_col, end_row, end_co
 
     vim.api.nvim_buf_set_option(ui_elem.bufnr, "filetype", filetype)
 
-    ui_elem:map("n", vim.g.quickllm_ui_commands.use_as_output, function()
+    ui_elem:map("n", vim.g.qllm_ui_commands.use_as_output, function()
         local lines = vim.api.nvim_buf_get_lines(ui_elem.bufnr, 0, -1, false)
         vim.api.nvim_buf_set_text(bufnr, start_row, start_col, end_row, end_col, lines)
         ui_elem:unmount()
     end)
 
-    ui_elem:map("n", vim.g.quickllm_ui_commands.use_as_input, function()
+    ui_elem:map("n", vim.g.qllm_ui_commands.use_as_input, function()
         vim.api.nvim_feedkeys("ggVG:Chat ", "n", false)
     end, { noremap = false })
 
-    for _, command in ipairs(vim.g.quickllm_ui_custom_commands) do
+    for _, command in ipairs(vim.g.qllm_ui_custom_commands) do
         ui_elem:map(command[1], command[2], command[3], command[4])
     end
 
@@ -232,7 +232,7 @@ end
 
 ---Recalculates and applies layout constraints to the currently active popup.
 function Ui.refresh_active_popup()
-    if vim.g.quickllm_popup_type ~= "popup" then return end
+    if vim.g.qllm_popup_type ~= "popup" then return end
 
     for bufnr, info in pairs(active_popups) do
         if info.ui_elem and vim.api.nvim_buf_is_valid(bufnr) then

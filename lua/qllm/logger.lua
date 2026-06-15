@@ -9,7 +9,7 @@ function M.get_log_path()
     if not path or path == "" then
         path = vim.fn.stdpath("cache")
     end
-    return path .. "/quickllm.log"
+    return path .. "/qllm.log"
 end
 
 ---Writes a message to the log file with a timestamp.
@@ -28,8 +28,8 @@ end
 ---@param command string The command being executed.
 ---@param payload table|string The raw payload.
 function M.log_request(provider, command, payload)
-    local log_enabled = vim.g.quickllm_log_enabled == true
-    local debug_enabled = vim.g.quickllm_debug == true
+    local log_enabled = vim.g.qllm_log_enabled == true
+    local debug_enabled = vim.g.qllm_debug == true
 
     if not log_enabled and not debug_enabled then return end
 
@@ -60,8 +60,8 @@ end
 ---@param command string The command name.
 ---@param response string The full response text.
 function M.log_response(provider, command, response)
-    local log_enabled = vim.g.quickllm_log_enabled == true
-    local debug_enabled = vim.g.quickllm_debug == true
+    local log_enabled = vim.g.qllm_log_enabled == true
+    local debug_enabled = vim.g.qllm_debug == true
 
     if not log_enabled and not debug_enabled then return end
 
@@ -72,11 +72,11 @@ function M.log_response(provider, command, response)
             response))
     end
 
-    -- If quickllm_debug is enabled, open a combined popup
+    -- If qllm_debug is enabled, open a combined popup
     -- showing exactly what went out and what came back.
     if debug_enabled then
         vim.schedule(function()
-            local Ui = require("quickllm.ui")
+            local Ui = require("qllm.ui")
             local lines = {
                 "# DEBUG TRACE",
                 "",
@@ -105,7 +105,7 @@ function M.log_response(provider, command, response)
             Ui.popup(lines, "markdown")
             
             -- One-shot reset
-            vim.g.quickllm_debug = false
+            vim.g.qllm_debug = false
             last_request = nil
         end)
     end

@@ -1,8 +1,8 @@
-local CommandsList = require("quickllm.commands_list")
-local Providers = require("quickllm.providers")
-local Api = require("quickllm.api")
-local History = require("quickllm.history")
-local Utils = require("quickllm.utils")
+local CommandsList = require("qllm.commands_list")
+local Providers = require("qllm.providers")
+local Api = require("qllm.api")
+local History = require("qllm.history")
+local Utils = require("qllm.utils")
 
 local Commands = {}
 
@@ -19,19 +19,19 @@ function Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts
 
 	if cmd_opts == nil then
 		vim.notify("Command not found: " .. command, vim.log.levels.ERROR, {
-			title = "QuickLLM",
+			title = "qLLM",
 		})
 		return
 	end
 
     -- Tag the buffer with current metadata for status reporting and history
-    vim.b[bufnr or vim.api.nvim_get_current_buf()].quickllm_metadata = {
+    vim.b[bufnr or vim.api.nvim_get_current_buf()].qllm_metadata = {
         model = cmd_opts.model,
         command = command
     }
 
-	if vim.g.quickllm_print_model then
-		vim.notify("LLM Model - " .. cmd_opts.model, vim.log.levels.INFO, { title = "QuickLLM" })
+	if vim.g.qllm_print_model then
+		vim.notify("LLM Model - " .. cmd_opts.model, vim.log.levels.INFO, { title = "qLLM" })
 	end
 
   -- If bufnr is not provided, default to the current buffer.
@@ -48,7 +48,7 @@ function Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts
 
   if cmd_opts.is_search_command and not (effective_overrides and effective_overrides.search_provider) then
       effective_overrides = vim.tbl_extend("force", effective_overrides, {
-          search_provider = vim.g.quickllm_search_provider or "gemini"
+          search_provider = vim.g.qllm_search_provider or "gemini"
       })
   end
   local provider = Providers.get_provider(effective_overrides)
@@ -59,7 +59,7 @@ function Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts
 
   if use_streaming then
       -- Initialize UI
-      local Ui = require("quickllm.ui")
+      local Ui = require("qllm.ui")
 
       local ui_elem = Ui.create_window("markdown", bufnr, start_row, start_col, end_row, end_col)
       local ui_bufnr = ui_elem.bufnr
@@ -73,7 +73,7 @@ function Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts
         -- Throttling: Buffer for incoming chunks and a timer to flush them
         local pending_chunks = {}
         local render_timer = vim.loop.new_timer()
-        local show_thinking = vim.g.quickllm_show_thinking ~= false
+        local show_thinking = vim.g.qllm_show_thinking ~= false
 
         local function flush_buffer()
             -- BUFFER GUARD: If the window was closed, stop processing and cleanup
@@ -167,7 +167,7 @@ function Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts
                       History.add_message(bufnr, "assistant", full_text)
                   end
     
-                  if vim.g.quickllm_clear_visual_selection and vim.api.nvim_buf_is_valid(bufnr) then
+                  if vim.g.qllm_clear_visual_selection and vim.api.nvim_buf_is_valid(bufnr) then
                       vim.api.nvim_buf_set_mark(bufnr, "<", 0, 0, {})
                       vim.api.nvim_buf_set_mark(bufnr, ">", 0, 0, {})
                   end
@@ -212,7 +212,7 @@ function Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts
                       Ui.sync_window_size(ui_bufnr)
                   else
                     -- Fallback if buffer is gone
-                    vim.notify("QuickLLM Stream Error: " .. tostring(err), vim.log.levels.ERROR)
+                    vim.notify("qLLM Stream Error: " .. tostring(err), vim.log.levels.ERROR)
                   end
               end)
           end

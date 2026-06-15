@@ -2,13 +2,13 @@ local curl = require("plenary.curl")
 
 local Api = {}
 
-QUICKLLM_CALLBACK_COUNTER = 0
+QLLM_CALLBACK_COUNTER = 0
 
 local status_index = 0
 Api.progress_bar_dots = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
 
 function Api.get_status(...)
-    local Ui = require("quickllm.ui")
+    local Ui = require("qllm.ui")
     local bufnr = vim.api.nvim_get_current_buf()
 
     -- If we are in a UI window (split or popup), don't show the status here.
@@ -18,7 +18,7 @@ function Api.get_status(...)
 
     local last_command, last_model = Ui.get_active_status_info(bufnr)
 
-    local is_running = QUICKLLM_CALLBACK_COUNTER > 0
+    local is_running = QLLM_CALLBACK_COUNTER > 0
     local has_popup = Ui.has_active_popup(bufnr)
 
     local status = ""
@@ -45,22 +45,22 @@ function Api.get_status(...)
 end
 
 function Api.run_started_hook()
-    if vim.g.quickllm_hooks["request_started"] ~= nil then
-        vim.g.quickllm_hooks["request_started"]()
+    if vim.g.qllm_hooks["request_started"] ~= nil then
+        vim.g.qllm_hooks["request_started"]()
     end
 
-    QUICKLLM_CALLBACK_COUNTER = QUICKLLM_CALLBACK_COUNTER + 1
+    QLLM_CALLBACK_COUNTER = QLLM_CALLBACK_COUNTER + 1
 end
 
 function Api.run_finished_hook()
-    QUICKLLM_CALLBACK_COUNTER = QUICKLLM_CALLBACK_COUNTER - 1
-    if QUICKLLM_CALLBACK_COUNTER < 0 then
-        QUICKLLM_CALLBACK_COUNTER = 0
+    QLLM_CALLBACK_COUNTER = QLLM_CALLBACK_COUNTER - 1
+    if QLLM_CALLBACK_COUNTER < 0 then
+        QLLM_CALLBACK_COUNTER = 0
     end
 
-    if QUICKLLM_CALLBACK_COUNTER <= 0 then
-        if vim.g.quickllm_hooks["request_finished"] ~= nil then
-            vim.g.quickllm_hooks["request_finished"]()
+    if QLLM_CALLBACK_COUNTER <= 0 then
+        if vim.g.qllm_hooks["request_finished"] ~= nil then
+            vim.g.qllm_hooks["request_finished"]()
         end
     end
 end

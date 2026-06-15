@@ -4,7 +4,7 @@ local Split = require("nui.split")
 local Window = {}
 
 function Window.create_horizontal()
-    local size = vim.g.quickllm_horizontal_popup_size or "40%"
+    local size = vim.g.qllm_horizontal_popup_size or "40%"
 
     local split_obj = Split({
         relative = "editor",
@@ -25,7 +25,7 @@ function Window.create_horizontal()
 end
 
 function Window.create_vertical()
-    local size = vim.g.quickllm_vertical_popup_size or "50%"
+    local size = vim.g.qllm_vertical_popup_size or "50%"
 
     local split_obj = Split({
         relative = "editor",
@@ -45,10 +45,10 @@ end
 
 function Window.create_popup()
     -- 1. Resolve window options (wrap, etc.)
-    local window_options = vim.deepcopy(vim.g.quickllm_popup_window_options or {})
+    local window_options = vim.deepcopy(vim.g.qllm_popup_window_options or {})
 
     -- 2. Resolve base options from user config
-    local options = vim.deepcopy(vim.g.quickllm_popup_layout or {
+    local options = vim.deepcopy(vim.g.qllm_popup_layout or {
         relative = "editor",
         position = "50%",
         size = { width = "80%", height = "60%" }
@@ -89,7 +89,7 @@ function Window.create_popup()
     local ui_elem = Popup({
         enter = true,
         focusable = true,
-        border = { style = vim.g.quickllm_popup_style or "rounded" },
+        border = { style = vim.g.qllm_popup_style or "rounded" },
         relative = options.relative or "editor",
         position = {
             row = initial_row,
@@ -117,7 +117,7 @@ function Window.sync_size(ui_bufnr, info)
     end
 
     -- Dynamic resizing only applies to 'popup' type
-    if vim.g.quickllm_popup_type ~= "popup" then
+    if vim.g.qllm_popup_type ~= "popup" then
         return 0, 0
     end
 
@@ -166,7 +166,7 @@ end
 
 ---Calculates new layout constraints from global configuration.
 function Window.get_layout_constraints()
-    local options = vim.g.quickllm_popup_layout or {
+    local options = vim.g.qllm_popup_layout or {
         relative = "editor",
         position = "50%",
         size = { width = "80%", height = "60%" }
@@ -196,7 +196,7 @@ end
 
 ---Updates the global popup layout configuration.
 function Window.update_global_layout(delta_w, delta_h)
-    local layout = vim.deepcopy(vim.g.quickllm_popup_layout or {
+    local layout = vim.deepcopy(vim.g.qllm_popup_layout or {
         relative = "editor",
         position = "50%",
         size = { width = "80%", height = "60%" }
@@ -220,8 +220,8 @@ function Window.update_global_layout(delta_w, delta_h)
     layout.size.width = new_w .. "%"
     layout.size.height = new_h .. "%"
     
-    vim.g.quickllm_popup_layout = layout
-    vim.notify(string.format("QuickLLM Window Size: %d%% x %d%%", new_w, new_h), vim.log.levels.INFO, { title = "QuickLLM" })
+    vim.g.qllm_popup_layout = layout
+    vim.notify(string.format("qLLM Window Size: %d%% x %d%%", new_w, new_h), vim.log.levels.INFO, { title = "qLLM" })
     return new_w, new_h
 end
 

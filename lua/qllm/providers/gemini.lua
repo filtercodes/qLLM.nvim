@@ -1,10 +1,10 @@
 local curl = require("plenary.curl")
-local Render = require("quickllm.template_render")
-local Utils = require("quickllm.utils")
-local Api = require("quickllm.api")
-local History = require("quickllm.history")
-local Ui = require("quickllm.ui")
-local Logger = require("quickllm.logger")
+local Render = require("qllm.template_render")
+local Utils = require("qllm.utils")
+local Api = require("qllm.api")
+local History = require("qllm.history")
+local Ui = require("qllm.ui")
+local Logger = require("qllm.logger")
 
 GeminiProvider = {}
 
@@ -19,7 +19,7 @@ function GeminiProvider.make_request(command, cmd_opts, command_args, text_selec
     -- Payload
     local messages_for_api = {}
     local include_history = true
-    if cmd_opts.is_search_command and vim.g.quickllm_ground_with_history == false then
+    if cmd_opts.is_search_command and vim.g.qllm_ground_with_history == false then
         include_history = false
     end
 
@@ -88,11 +88,11 @@ function GeminiProvider.make_request(command, cmd_opts, command_args, text_selec
 end
 
 function GeminiProvider.make_headers()
-    local api_key = vim.g.quickllm_gemini_api_key or os.getenv("GEMINI_API_KEY")
+    local api_key = vim.g.qllm_gemini_api_key or os.getenv("GEMINI_API_KEY")
 
     if not api_key then
         error(
-            "Gemini API Key not found, set in vim with 'quickllm_gemini_api_key' or as the env variable 'GEMINI_API_KEY'"
+            "Gemini API Key not found, set in vim with 'qllm_gemini_api_key' or as the env variable 'GEMINI_API_KEY'"
         )
     end
 
@@ -168,7 +168,7 @@ function GeminiProvider.handle_response(json, user_message_text, cb, bufnr)
                 History.add_message(bufnr, "user", user_message_text)
                 History.add_message(bufnr, "assistant", response_text)
 
-                if vim.g.quickllm_clear_visual_selection and vim.api.nvim_buf_is_valid(bufnr) then
+                if vim.g.qllm_clear_visual_selection and vim.api.nvim_buf_is_valid(bufnr) then
                     vim.api.nvim_buf_set_mark(bufnr, "<", 0, 0, {})
                     vim.api.nvim_buf_set_mark(bufnr, ">", 0, 0, {})
                 end
@@ -226,7 +226,7 @@ function GeminiProvider.make_call(payload, user_message_text, cb, bufnr)
                 if not chunk then 
                     -- End of stream
                     vim.schedule(function()
-                        if #collected_sources > 0 and vim.g.quickllm_show_search_sources then
+                        if #collected_sources > 0 and vim.g.qllm_show_search_sources then
                              local sources_text = "\n\n**Sources:**\n" .. table.concat(collected_sources, "\n")
                              full_text = full_text .. sources_text
                              cb.on_chunk(sources_text, false)

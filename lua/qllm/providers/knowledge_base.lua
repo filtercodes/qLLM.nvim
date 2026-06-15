@@ -1,8 +1,8 @@
 local curl = require("plenary.curl")
-local Utils = require("quickllm.utils")
-local Api = require("quickllm.api")
-local ContextEngine = require("quickllm.context_engine")
-local Logger = require("quickllm.logger")
+local Utils = require("qllm.utils")
+local Api = require("qllm.api")
+local ContextEngine = require("qllm.context_engine")
+local Logger = require("qllm.logger")
 
 local KB = {}
 
@@ -21,7 +21,7 @@ local index_stats = {
 ---@param load_vec boolean? Whether to attempt loading the sqlite-vec extension.
 ---@return table results The output lines from the command.
 function KB.run_sql(sql, load_vec)
-    local kb_opts = vim.g.quickllm_kb_opts
+    local kb_opts = vim.g.qllm_kb_opts
     local db_path = kb_opts.db_path
     local vec_path = kb_opts.sqlite_vec_path
     
@@ -63,7 +63,7 @@ end
 
 ---Initializes the SQLite database with the hierarchical schema.
 function KB.init_db()
-    local kb_opts = vim.g.quickllm_kb_opts
+    local kb_opts = vim.g.qllm_kb_opts
     if vim.fn.executable("sqlite3") ~= 1 then
         vim.notify("Knowledge Base Error: 'sqlite3' executable not found.", vim.log.levels.ERROR)
         return false
@@ -122,7 +122,7 @@ end
 
 ---Calls the LLM to act as a Librarian and summarize the document.
 function KB.get_librarian_metadata(content, cb)
-    local kb_opts = vim.g.quickllm_kb_opts
+    local kb_opts = vim.g.qllm_kb_opts
     local kb_folder = kb_opts.wiki_folder
     local schema_path = kb_folder .. "/schema.md"
     local schema_content = ""
@@ -148,8 +148,8 @@ DOCUMENT:
     local kb_model = kb_opts.model or "nomic-embed-text"
 
     local overrides = { provider = kb_provider, model = kb_model }
-    local Providers = require("quickllm.providers")
-    local CommandsList = require("quickllm.commands_list")
+    local Providers = require("qllm.providers")
+    local CommandsList = require("qllm.commands_list")
     local provider = Providers.get_provider(overrides)
     local cmd_opts = CommandsList.get_cmd_opts("chat", overrides)
     
@@ -173,7 +173,7 @@ end
 
 ---Generates an embedding for text.
 function KB.generate_embedding(text, cb)
-    local kb_opts = vim.g.quickllm_kb_opts
+    local kb_opts = vim.g.qllm_kb_opts
     local kb_provider = kb_opts.provider or "ollama"
     local kb_model = kb_opts.model or "nomic-embed-text"
     
@@ -182,7 +182,7 @@ function KB.generate_embedding(text, cb)
     local headers = { ["Content-Type"] = "application/json" }
 
     if kb_provider == "ollama" then
-        url = (vim.g.quickllm_ollama_url or "http://localhost:11434") .. "/api/embeddings"
+        url = (vim.g.qllm_ollama_url or "http://localhost:11434") .. "/api/embeddings"
         body = { model = kb_model, prompt = text }
     elseif kb_provider == "openai" then
         url = "https://api.openai.com/v1/embeddings"
@@ -245,7 +245,7 @@ end
 
 ---Runs the Global Auditor to find anomalies and populates the Quickfix list.
 function KB.wiki_lint()
-    local kb_opts = vim.g.quickllm_kb_opts
+    local kb_opts = vim.g.qllm_kb_opts
     if not KB.init_db() then return end
     local vec_path = kb_opts.sqlite_vec_path
     local has_vec = vec_path ~= "" and vim.fn.filereadable(vec_path) == 1
@@ -341,7 +341,7 @@ end
 
 ---Main indexing entry point.
 function KB.wiki_index()
-    local kb_opts = vim.g.quickllm_kb_opts
+    local kb_opts = vim.g.qllm_kb_opts
     local now = os.time()
     
     -- SAFETY: If indexing has been "active" for more than 5 minutes without progress, 
@@ -382,7 +382,7 @@ end
 
 ---Orchestrates the one-pass indexing for a file.
 function KB.process_next_file(files, index)
-    local kb_opts = vim.g.quickllm_kb_opts
+    local kb_opts = vim.g.qllm_kb_opts
     if index > #files then
         is_indexing = false
         vim.notify(string.format("Index Complete! Processed %d files.", #files), vim.log.levels.INFO)
@@ -405,7 +405,7 @@ function KB.process_next_file(files, index)
     local style = kb_opts.style
     
     -- CHUNKING: Use the structure-aware chunker module
-    local Chunker = require("quickllm.chunker")
+    local Chunker = require("qllm.chunker")
     local chunks = Chunker.chunk_file(path)
 
     -- ATOMIC CLEANUP: Reverse order to avoid orphans
@@ -473,7 +473,7 @@ function KB.process_next_file(files, index)
 
                 -- NEIGHBORHOOD WEAVING (Phase 4 Step 3)
                 if style == "complex" and summary ~= "" then
-                    local Orchestrator = require("quickllm.wiki_orchestrator")
+                    local Orchestrator = require("qllm.wiki_orchestrator")
                     Orchestrator.weave_neighborhood(path, content, summary)
                 end
 
@@ -515,7 +515,7 @@ end
 
 ---Performs Hybrid Hierarchical Search.
 function KB.make_call(payload, user_msg, cb, bufnr)
-    local kb_opts = vim.g.quickllm_kb_opts
+    local kb_opts = vim.g.qllm_kb_opts
     local query = payload.query
 
     -- TRACE: Log the outgoing request
@@ -601,7 +601,7 @@ end
 ---@param filename string The target filename.
 ---@param selection string? The selected text (optional).
 function KB.wiki_save(filename, selection)
-    local kb_folder = vim.g.quickllm_kb_folder
+    local kb_folder = vim.g.qllm_kb_folder
     if vim.fn.isdirectory(kb_folder) == 0 then
         vim.fn.mkdir(kb_folder, "p")
     end

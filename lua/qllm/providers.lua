@@ -1,10 +1,10 @@
-local OpenAIProvider = require("quickllm.providers.openai")
-local AnthropicProvider = require("quickllm.providers.anthropic")
-local OllaMaProvider = require("quickllm.providers.ollama")
-local GroqProvider = require("quickllm.providers.groq")
-local GeminiProvider = require("quickllm.providers.gemini")
-local LocalGroundingProvider = require("quickllm.providers.local_grounding")
-local KnowledgeBaseProvider = require("quickllm.providers.knowledge_base")
+local OpenAIProvider = require("qllm.providers.openai")
+local AnthropicProvider = require("qllm.providers.anthropic")
+local OllaMaProvider = require("qllm.providers.ollama")
+local GroqProvider = require("qllm.providers.groq")
+local GeminiProvider = require("qllm.providers.gemini")
+local LocalGroundingProvider = require("qllm.providers.local_grounding")
+local KnowledgeBaseProvider = require("qllm.providers.knowledge_base")
 
 local Providers = {}
 
@@ -14,7 +14,7 @@ function Providers.get_provider(overrides)
     if provider_name then
         provider = vim.fn.tolower(provider_name)
     else
-        provider = vim.fn.tolower(vim.g.quickllm_api_provider or "openai")
+        provider = vim.fn.tolower(vim.g.qllm_api_provider or "openai")
     end
 
     if provider == "openai" then

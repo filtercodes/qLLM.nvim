@@ -1,8 +1,8 @@
---/lua/quickllm/history.lua
+--/lua/qllm/history.lua
 -- This module manages the chat history on a per-buffer basis.
 
 local M = {}
-local Utils = require("quickllm.utils")
+local Utils = require("qllm.utils")
 
 -- In-memory store for chat history, keyed by buffer number.
 -- Each history is a list of messages.
@@ -27,7 +27,7 @@ function M.add_message(bufnr, role, content, model, command)
     -- If metadata isn't explicitly provided
     -- try to retrieve it from the buffer-local source of truth.
     if not model or not command then
-        local metadata = vim.b[bufnr] and vim.b[bufnr].quickllm_metadata
+        local metadata = vim.b[bufnr] and vim.b[bufnr].qllm_metadata
         if metadata then
             model = model or metadata.model
             command = command or metadata.command
@@ -48,7 +48,7 @@ function M.add_message(bufnr, role, content, model, command)
     }
     table.insert(history[bufnr], message)
 
-    local opts = vim.g.quickllm_history_opts or {}
+    local opts = vim.g.qllm_history_opts or {}
     local max_messages = opts.max_messages or 50
     local summarize_enabled = opts.summarize_history ~= false
 
@@ -81,7 +81,7 @@ function M.get_messages(bufnr)
         return {}
     end
 
-    local opts = vim.g.quickllm_history_opts or {}
+    local opts = vim.g.qllm_history_opts or {}
     local time_based_expiry = opts.time_based_expiry or false
 
     local current_time = os.time()
@@ -105,7 +105,7 @@ function M.get_messages(bufnr)
         bufnr_history = valid_history -- update local ref for return loop below
 
         if expired_count > 0 and #valid_history == 0 then
-             -- vim.notify("QuickLLM chat history cleared due to inactivity.", vim.log.levels.INFO, { title = "QuickLLM" })
+             -- vim.notify("qLLM chat history cleared due to inactivity.", vim.log.levels.INFO, { title = "qLLM" })
              return {}
         end
     end
@@ -209,7 +209,7 @@ end
 ---@param summary_text string
 function M.apply_summary(bufnr, summary_text)
     local msgs = history[bufnr]
-    local opts = vim.g.quickllm_history_opts or {}
+    local opts = vim.g.qllm_history_opts or {}
     local max_messages = opts.max_messages or 50
     local half = math.floor(max_messages / 2)
 
@@ -241,13 +241,13 @@ end
 function M.summarize_history(bufnr)
     is_summarizing[bufnr] = true
     
-    local opts = vim.g.quickllm_history_opts or {}
+    local opts = vim.g.qllm_history_opts or {}
     local max_messages = opts.max_messages or 50
     local half = math.floor(max_messages / 2)
 
     -- Lazy require to avoid circular dependency
-    local Providers = require("quickllm.providers")
-    local CommandsList = require("quickllm.commands_list")
+    local Providers = require("qllm.providers")
+    local CommandsList = require("qllm.commands_list")
     
     local msgs = history[bufnr]
     if not msgs or #msgs < half then

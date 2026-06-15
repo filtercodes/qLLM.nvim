@@ -1,8 +1,8 @@
 local curl = require("plenary.curl")
-local Render = require("quickllm.template_render")
-local Utils = require("quickllm.utils")
-local Api = require("quickllm.api")
-local History = require("quickllm.history")
+local Render = require("qllm.template_render")
+local Utils = require("qllm.utils")
+local Api = require("qllm.api")
+local History = require("qllm.history")
 
 local LocalGroundingProvider = {}
 
@@ -26,9 +26,9 @@ function LocalGroundingProvider.make_request(command, cmd_opts, command_args, te
 end
 
 local function call_tavily(query, cb)
-    local api_key = vim.g.quickllm_tavily_api_key or os.getenv("TAVILY_API_KEY")
+    local api_key = vim.g.qllm_tavily_api_key or os.getenv("TAVILY_API_KEY")
     if not api_key then
-        error("Tavily API Key not found. Set 'quickllm_tavily_api_key' or TAVILY_API_KEY environment variable.")
+        error("Tavily API Key not found. Set 'qllm_tavily_api_key' or TAVILY_API_KEY environment variable.")
     end
 
     local url = "https://api.tavily.com/search"
@@ -81,7 +81,7 @@ local function call_tavily(query, cb)
 end
 
 function LocalGroundingProvider.make_call(payload, user_message_text, cb, bufnr)
-    local Providers = require("quickllm.providers")
+    local Providers = require("qllm.providers")
     local provider_instance = Providers.get_provider({ provider = payload.provider or "ollama" })
     
     -- Call Tavily
@@ -107,7 +107,7 @@ function LocalGroundingProvider.make_call(payload, user_message_text, cb, bufnr)
         local past_messages = History.get_messages(bufnr)
         local messages = {}
         
-        if vim.g.quickllm_ground_with_history ~= false then
+        if vim.g.qllm_ground_with_history ~= false then
             for _, msg in ipairs(past_messages) do
                 table.insert(messages, msg)
             end
@@ -127,7 +127,7 @@ function LocalGroundingProvider.make_call(payload, user_message_text, cb, bufnr)
                 on_chunk = cb.on_chunk,
                 on_error = cb.on_error,
                 on_complete = function(full_text)
-                    if #sources > 0 and vim.g.quickllm_show_search_sources then
+                    if #sources > 0 and vim.g.qllm_show_search_sources then
                         local sources_text = "\n\n**Sources:**\n" .. table.concat(sources, "\n")
                         cb.on_chunk(sources_text)
                     end
@@ -139,7 +139,7 @@ function LocalGroundingProvider.make_call(payload, user_message_text, cb, bufnr)
             -- Non-Streaming Mode: Wrap callback to append sources
             provider_instance.make_call(llm_payload, user_message_text, function(lines)
                 local response_text = table.concat(lines, "\n")
-                if #sources > 0 and vim.g.quickllm_show_search_sources then
+                if #sources > 0 and vim.g.qllm_show_search_sources then
                     response_text = response_text .. "\n\n**Sources:**\n" .. table.concat(sources, "\n")
                 end
                 cb(Utils.parse_lines(response_text))

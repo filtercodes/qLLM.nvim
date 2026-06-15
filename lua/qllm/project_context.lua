@@ -1,5 +1,5 @@
 local M = {}
-local Api = require("quickllm.api")
+local Api = require("qllm.api")
 
 ---Gets the project root directory (closest directory with .git or current working dir).
 ---@return string
@@ -40,7 +40,7 @@ local last_progress_time = 0
 ---Orchestrates the project initialization (:Chat init).
 ---@param callback function? Optional callback for when init is complete.
 function M.init_project(callback)
-    local kb_opts = vim.g.quickllm_kb_opts or {}
+    local kb_opts = vim.g.qllm_kb_opts or {}
     local now = os.time()
     if is_indexing and (now - last_progress_time < 300) then
         vim.notify("Project initialization already in progress.", vim.log.levels.WARN)
@@ -83,13 +83,13 @@ IMPORTANT: Output your response in Markdown format. Start with a metadata block 
 
     local provider_name = kb_opts.project_provider or "ollama"
 
-    local Providers = require("quickllm.providers")
+    local Providers = require("qllm.providers")
     local provider = Providers.get_provider({ provider = provider_name })
 
     -- If model is nil, fetch the provider's default
     local model_name = kb_opts.project_model
     if not model_name then
-        local CommandsList = require("quickllm.commands_list")
+        local CommandsList = require("qllm.commands_list")
         local provider_opts = CommandsList.get_cmd_opts("chat", { provider = provider_name })
         model_name = provider_opts.model
     end
@@ -108,7 +108,7 @@ IMPORTANT: Output your response in Markdown format. Start with a metadata block 
         local metadata_str = string.format('{"hash": "%%s", "count": %%d}', hash, count)
         local final_content = response:gsub('{"hash": "PENDING", "count": 0}', metadata_str)
         
-        local output_path = root .. "quickLLM.md"
+        local output_path = root .. "qLLM.md"
         local f = io.open(output_path, "w")
         if f then
             f:write(final_content)
@@ -122,10 +122,10 @@ IMPORTANT: Output your response in Markdown format. Start with a metadata block 
     end, -1)
 end
 
----Returns the content of quickLLM.md if it exists.
+---Returns the content of qLLM.md if it exists.
 function M.get_active_context()
     local root = M.get_project_root()
-    local path = root .. "quickLLM.md"
+    local path = root .. "qLLM.md"
     if vim.fn.filereadable(path) == 1 then
         return table.concat(vim.fn.readfile(path), "\n")
     end
@@ -163,7 +163,7 @@ end
 ---Ensures project context is fresh, running init if needed based on auto_init setting.
 ---@param callback function The function to call once context is ready/checked.
 function M.ensure_fresh_context(callback)
-    local kb_opts = vim.g.quickllm_kb_opts or {}
+    local kb_opts = vim.g.qllm_kb_opts or {}
     local auto_init = kb_opts.auto_init ~= false
     local auto_check = kb_opts.auto_check_freshness ~= false
 
@@ -180,10 +180,10 @@ function M.ensure_fresh_context(callback)
         callback()
     elseif status == "significant_change" then
         if auto_init then
-            vim.notify("[QuickLLM] Syncing project map (significant changes detected)...", vim.log.levels.INFO)
+            vim.notify("[qLLM] Syncing project map (significant changes detected)...", vim.log.levels.INFO)
             M.init_project(callback)
         else
-            vim.notify("[QuickLLM] Project map is stale. Run :Chat init to update.", vim.log.levels.WARN)
+            vim.notify("[qLLM] Project map is stale. Run :Chat init to update.", vim.log.levels.WARN)
             callback()
         end
     else
@@ -195,7 +195,7 @@ end
 function M.check_freshness()
     local status = M.get_freshness_status()
     if status == "significant_change" then
-        vim.notify("[QuickLLM] Project map is stale. Run :Chat init to update.", vim.log.levels.WARN)
+        vim.notify("[qLLM] Project map is stale. Run :Chat init to update.", vim.log.levels.WARN)
     end
 end
 

@@ -42,7 +42,7 @@ end
 ---@param provider_name string
 ---@return string strategy "god_prompt" | "lazy"
 function M.get_update_strategy(provider_name)
-    local capabilities = vim.g.quickllm_provider_capabilities or {}
+    local capabilities = vim.g.qllm_provider_capabilities or {}
     local name = provider_name:lower()
 
     -- 1. Check explicit map in config
@@ -72,9 +72,9 @@ end
 ---@param source_content string The raw content of the new file.
 ---@param source_summary string The LLM-generated summary.
 function M.weave_neighborhood(source_path, source_content, source_summary)
-    local KB = require("quickllm.providers.knowledge_base")
-    local SafeWriter = require("quickllm.wiki_safe_writer")
-    local kb_opts = vim.g.quickllm_kb_opts
+    local KB = require("qllm.providers.knowledge_base")
+    local SafeWriter = require("qllm.wiki_safe_writer")
+    local kb_opts = vim.g.qllm_kb_opts
     
     local kb_provider = kb_opts.provider or "ollama"
     local kb_model = kb_opts.model or "nomic-embed-text"
@@ -120,8 +120,8 @@ function M.weave_neighborhood(source_path, source_content, source_summary)
         
         if #neighbors == 0 then return end
 
-        local Providers = require("quickllm.providers")
-        local CommandsList = require("quickllm.commands_list")
+        local Providers = require("qllm.providers")
+        local CommandsList = require("qllm.commands_list")
         
         local overrides = { provider = kb_provider, model = kb_model }
         local provider = Providers.get_provider(overrides)
@@ -176,7 +176,7 @@ You MUST output a strictly formatted JSON array containing the ripples:
                         SafeWriter.apply_ripple_async(ripple.filepath, ripple, function(success)
                             if success then
                                 vim.schedule(function()
-                                    vim.notify(string.format("[QuickLLM] Librarian integrated update into %s", vim.fn.fnamemodify(ripple.filepath, ":t")), vim.log.levels.INFO)
+                                    vim.notify(string.format("[qLLM] Librarian integrated update into %s", vim.fn.fnamemodify(ripple.filepath, ":t")), vim.log.levels.INFO)
                                 end)
                             end
                         end)
@@ -221,7 +221,7 @@ Output strictly JSON:
                         SafeWriter.apply_ripple_async(ripple.filepath, ripple, function(success)
                             if success then
                                 vim.schedule(function()
-                                    vim.notify(string.format("[QuickLLM] Librarian integrated update into %s", vim.fn.fnamemodify(ripple.filepath, ":t")), vim.log.levels.INFO)
+                                    vim.notify(string.format("[qLLM] Librarian integrated update into %s", vim.fn.fnamemodify(ripple.filepath, ":t")), vim.log.levels.INFO)
                                 end)
                             end
                         end)
