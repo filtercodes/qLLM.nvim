@@ -226,9 +226,8 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
     -- Project Context Injection
     -- 2. Project Context (System Project Map) Injection
     local project_map = ProjectContext.get_active_context()
-    local system_context = ""
+    local project_root = ProjectContext.get_project_root()
     if project_map then
-        system_context = "\n[SYSTEM PROJECT CONTEXT]\n" .. project_map .. "\n---\n"
         local kb_opts = vim.g.qllm_kb_opts
         if kb_opts and kb_opts.auto_check_freshness then
             ProjectContext.check_freshness()
@@ -287,7 +286,32 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
         resolved_files = { vim.api.nvim_buf_get_name(current_bufnr) }
     end
 
-    -- 4. Command-Specific Formatting
+    -- 4. Determine if we should inject project context (only if relevant to current project)
+    local system_context = ""
+    if project_map then
+        local use_project_context = false
+        if #resolved_files > 0 then
+            for _, path in ipairs(resolved_files) do
+                -- Check if file is a child of the project root
+                if path:sub(1, #project_root) == project_root then
+                    use_project_context = true
+                    break
+                end
+            end
+        else
+            -- If no files resolved, check if current buffer is in project
+            local current_file = vim.api.nvim_buf_get_name(current_bufnr)
+            if current_file ~= "" and current_file:sub(1, #project_root) == project_root then
+                use_project_context = true
+            end
+        end
+
+        if use_project_context then
+            system_context = "\n[SYSTEM PROJECT CONTEXT]\n" .. project_map .. "\n---\n"
+        end
+    end
+
+    -- 5. Command-Specific Formatting
     if #resolved_files > 0 then
         if command == "files" then
             local context_text = M.format_files_as_context(resolved_files)

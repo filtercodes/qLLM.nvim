@@ -1,8 +1,8 @@
 # qLLM.nvim
 
-qLLM provides a fast way to access LLMs directly within the Neovim editor. Running an editor command followed by a prompt opens the response in a popup window. The plugin is highly configurable and includes advanced context and knowledge management tools, as well as coding focused commands.
+qLLM provides a convenient way to access LLMs directly within the Neovim editor. Running a command followed by a prompt opens the response in a popup window. The plugin is highly configurable and includes advanced context and knowledge management tools, as well as coding focused commands.
 
-No Agentic Overhead - qLLM follows the philosophy: "developer is the agent orchestrator". This allows for a streamlined workflow with mid-size or large local language models and gives control back to the developer who might feel like "stuck in the agentic loop".
+No Agentic Overhead - qLLM follows the philosophy: "developer is the agent orchestrator". This allows for a streamlined workflow with mid-size or large local language models and gives control back to the developer who may find themselves stuck in an agentic loop.
 
 Focus is on context management, knowledge extraction and using direct commands to call tools and self-orchestrate the AI development workflow.
 
@@ -22,7 +22,7 @@ Installing with [lazy.nvim](https://github.com/folke/lazy.nvim).
 
 ```lua
 {
-   "filtercodes/qllm.nvim",
+   "filtercodes/qLLM.nvim",
    dependencies = {
       "MunifTanjim/nui.nvim",
       "nvim-lua/plenary.nvim",
@@ -44,7 +44,7 @@ Installing with [vim-plug](https://github.com/junegunn/vim-plug).
 " Install plugins
 Plug("nvim-lua/plenary.nvim")
 Plug("MunifTanjim/nui.nvim")
-Plug('filtercodes/qllm.nvim')
+Plug('filtercodes/qLLM.nvim')
 
 call plug#end()
 
@@ -74,54 +74,36 @@ Using these commands works exactly like `:Chat`, but routes the request to the s
 
 There are also configurable presets: `:Chat1`, `:Chat2`, and `:Chat3`. To quickly switch between different models and providers without changing global configuration (e.g., setting `:Chat2` to always use Anthropic's Claude 3.5 Sonnet while `:Chat` remains local Ollama instance). See the "Overriding Command Configurations" section below for details.
 
-### Chat
-* `:Chat hello world` (with or without text selection) will trigger the `chat` command. This will send the arguments `hello world` and show the results in a popup.
-
 ![chat](examples/chat.gif?raw=true)
 
-### Completion
-* `:Chat complete` with text selection will trigger the `complete` command, LLM will try to complete the selected code snippet.
+## List of default commands
 
-![complete](examples/completion.gif?raw=true)
-
-### Edit
-* `:Chat edit some instructions` with text selection and command args will invoke the `edit` command. This will treat the command args as instructions on what to do with the code snippet. In the below example, `:Chat refactor to use iteration` will apply the instruction `refactor to use iteration` to the selected code.
-
-![edit](examples/code_edit.gif?raw=true)
-
-### Custom commands
-* `:Chat <command>` if there is only one argument and that argument matches a command, it will invoke that command with the given text selection. In the below example `:Chat tests` will attempt to write units for the selected code.
-
-![tests](examples/tests.gif?raw=true)
-
-## A list of default commands
-
-### General commands
+### General
 
 | Command      | Input | Description |
 |--------------|---- |------------------------------------|
-| chat  |  prompt | General chat command - Passes the given prompt to LLM and returns the response in a popup. |
-| search |  prompt (optional text selection) | Triggers a web search (grounding) before answering to provide up-to-date information. Shows the grounded answer in a popup. |
+| chat  |  prompt and/or text selection | General chat command - Passes the given prompt to LLM and returns the response in a popup. |
+| search |  prompt and/or text selection | Triggers a web search (grounding) before answering to provide up-to-date information. Shows the grounded answer in a popup. |
 
 ### Code related commands
 
 | Command      | Input | Description |
 |--------------|---- |------------------------------------|
 | complete |  text selection | Asks LLM to complete the selected code directly in the editor. |
-| edit  |  text selection + prompt | Asks LLM to apply the given instructions to the selected code in the editor. |
+| edit  |  text selection (optional prompt) | Asks LLM to apply the given instructions to the selected code in the editor. |
 | tests  |  text selection | Asks LLM to write unit tests for the selected code in the popup window. |
-| opt  |  text selection | Asks LLM to optimize the selected code. Updates the code directly in the editor. |
 | debug  |  text selection | Passes the code selection to LLM to analyze it for bugs, the results will be in a popup. |
+| opt  |  text selection | Asks LLM to optimize the selected code. Updates the code directly in the editor. |
 | doc  |  text selection | Asks LLM to document the selected code. Updates the text directly in the editor. |
 
 ### Context commands
 
 | Command      | Input | Description |
 |--------------|---- |------------------------------------|
-| init  |  none | Analyzes the local project and creates an architectural map (`qLLM.md`) for the context orchestration. |
-| files  |  [file list] + prompt | Reads local project files (supports wildcards) and passes their content as context for the prompt. |
-| scan  |  [file list] + "query" + prompt | Performs a fast literal search or hybrid semantic search (if initialized) across local project files and sends relevant chunks to the LLM. |
-| explain  |  text selection | Asks LLM to explain the selected text or code and return the explanation in a text popup. |
+| init  |  none | Analyzes the local folder and subfolders to create an architectural map (`qLLM.md`) for the context orchestration. |
+| explain  |  text selection | Asks LLM to explain the selected text or code and returns the explanation in a text popup.|
+| files  |  [file paths] + prompt | Reads files content (supports wildcards) and passes it as context for the prompt. |
+| scan  |  [file paths] + "query" + prompt | Performs a fast literal search or hybrid semantic search (if initialized) across local project files and sends relevant chunks to the LLM. |
 
 ### Wiki commands
 
@@ -132,7 +114,7 @@ There are also configurable presets: `:Chat1`, `:Chat2`, and `:Chat3`. To quickl
 | wiki_save  |  text selection or none | Saves current buffer or visual selection into the Wiki Knowledge Base for future retrieval. |
 | wiki_lint  |  none | Runs the Auditor to find isolated notes or 'Shadow Concepts' in the Wiki. |
 
-### Other command defaults
+### Other
 
 | Command      | Input | Description |
 |--------------|---- |------------------------------------|
@@ -206,7 +188,7 @@ vim.g.qllm_show_thinking = true
 
 ### Configuring Presets (:Chat1, :Chat2, :Chat3)
 
-Each preset has its own configuration scope. Append `1`, `2`, or `3` to the variables. This is perfect for mapping a preset to a completely different stack.
+Each preset has its own configuration scope. Append `1`, `2`, or `3` to the variables. This is useful for mapping a preset to a completely different stack.
 
 ```lua
 -- Configure :Chat1 to be a "Local Dev" preset
@@ -220,16 +202,16 @@ vim.g.qllm_commands_defaults1 = {
 
 ### Search (Grounding) configuration
 
-`vim.g.qllm_search_provider` - Defines which provider to use for the `:Chat search` command. Current supported options are `"gemini"`, `"openai"`, `"anthropic"` and `"local_grounding"`. Defaults to `"gemini"`.
+`vim.g.qllm_search_provider` - Defines which provider to use for the default `:Chat search` command. Current supported options are `"gemini"`, `"openai"`, `"anthropic"` and `"local_grounding"`. Defaults to `"gemini"`. [As previously mentioned](#configuring-providers-and-models), set default grounding model using `vim.g.qllm_search_model_defaults`.
 
-`vim.g.qllm_show_search_sources` - Boolean (Default: `true`). Allows you to see the links/citations used by LLM during a search displayed in the popup UI. If you are using a smaller model you can set it to `false` to deal with strict context limits.
+`vim.g.qllm_show_search_sources` - Boolean (Default: `true`). Show or hide the links/citations used by LLM during a search in the popup UI. If you are using a smaller model you can set it to `false` to deal with strict context limits.
 
-`vim.g.qllm_ground_with_history` - Boolean (Default: `false`). If you want to send previous conversation history to the grounding model set it to `true`. This might be useful for model to pick up more info about the search term from the context, but also conversation history might confuse smaller models or create biased grounding.
+`vim.g.qllm_ground_with_history` - Boolean (Default: `false`). If you want to send previous conversation history to the grounding model set it to `true`. This might be useful for model to pick up more info about the search term from the context, but also conversation history might confuse smaller local models or create biased grounding.
 
 ```lua
 vim.g.qllm_search_provider = "anthropic"
 vim.g.qllm_show_search_sources = true
-vim.g.qllm_ground_with_history = false
+vim.g.qllm_ground_with_history = true
 ```
 
 Note that `"local_grounding"` requires `TAVILY_API_KEY` as an environment variable! Local Ollama model uses internet search results from [Tavily](https://app.tavily.com/home) to construct a grounded answer.
@@ -597,6 +579,54 @@ The logs contain full JSON request payload and the assistant response.
 
 ## Writing new commands
 
+### Custom commands
+
+Custom commands can be added to the `vim.g.qllm_commands` configuration option to extend the available commands.
+
+```lua
+vim.g.qllm_commands = {
+  modernize = {
+      user_message_template = "I have the following {{language}} code: ```{{filetype}}\n{{text_selection}}```\nModernize the above code. Use current best practices. Only return the code snippet and comments. {{language_instructions}}",
+      language_instructions = {
+          cpp = "Refactor the code to use trailing return type, and the auto keyword where applicable.",
+      },
+  }
+}
+```
+The above configuration adds the command `:Chat modernize` that attempts modernize the selected code snippet.
+
+### Command args
+
+Commands are normally a single value, for example `:Chat complete`. You can make commands accept additional arguments by using the `{{command_args}}` macro anywhere in either `user_message_template` or `system_message_template`. For example:
+
+```lua
+vim.g.qllm_commands = {
+  testwith = {
+      user_message_template =
+        "Write tests for the following code: ```{{filetype}}\n{{text_selection}}```\n{{command_args}} " ..
+        "Only return the code snippet and nothing else."
+  }
+}
+```
+
+After defining this command, any `:Chat` command that has `testwith` as its first argument will be handled. For example, `:Chat testwith some additional instructions` will be interpreted as `testwith` with `"some additional instructions"`.
+
+### Language instructions
+
+Some commands have templates that use the `{{language_instructions}}` macro to allow for additional instructions for specific [filetypes](https://neovim.io/doc/user/filetype.html).
+
+```lua
+vim.g.qllm_commands_defaults = {
+  complete = {
+      language_instructions = {
+          cpp = "Use trailing return type.",
+      },
+  }
+}
+```
+
+The above adds a specific `Use trailing return type.` to the command `complete` for the filetype `cpp`.
+
 ### Templates
 
 The `system_message_template` and the `user_message_template` can contain template macros. For example:
@@ -616,66 +646,5 @@ Callback types control what happens to the response.
 | Name      | Description |
 |--------------|----------|
 | replace_lines | Replaces the current lines with the response. If no text is selected it inserts the response at the cursor. |
-| text_popup | Displays the result in a text popup window. |
-
-### Language instructions
-
-Some commands have templates that use the `{{language_instructions}}` macro to allow for additional instructions for specific [filetypes](https://neovim.io/doc/user/filetype.html).
-
-```lua
-vim.g.qllm_commands_defaults = {
-  complete = {
-      language_instructions = {
-          cpp = "Use trailing return type.",
-      },
-  }
-}
-```
-
-The above adds a specific `Use trailing return type.` to the command `complete` for the filetype `cpp`.
-
-
-### Command args
-
-Commands are normally a single value, for example `:Chat complete`. You can make commands accept additional arguments by using the `{{command_args}}` macro anywhere in either `user_message_template` or `system_message_template`. For example:
-
-```lua
-vim.g.qllm_commands = {
-  testwith = {
-      user_message_template =
-        "Write tests for the following code: ```{{filetype}}\n{{text_selection}}```\n{{command_args}} " ..
-        "Only return the code snippet and nothing else."
-  }
-}
-```
-
-After defining this command, any `:Chat` command that has `testwith` as its first argument will be handled. For example, `:Chat testwith some additional instructions` will be interpreted as `testwith` with `"some additional instructions"`.
-
-
-### Custom commands
-
-Custom commands can be added to the `vim.g.qllm_commands` configuration option to extend the available commands.
-
-```lua
-vim.g.qllm_commands = {
-  modernize = {
-      user_message_template = "I have the following {{language}} code: ```{{filetype}}\n{{text_selection}}```\nModernize the above code. Use current best practices. Only return the code snippet and comments. {{language_instructions}}",
-      language_instructions = {
-          cpp = "Refactor the code to use trailing return type, and the auto keyword where applicable.",
-      },
-  }
-}
-```
-The above configuration adds the command `:Chat modernize` that attempts modernize the selected code snippet.
-
-### Configuration merge logic (the Waterfall)
-
-qLLM determines the settings by merging tables in this order (highest priority from the top):
-
-1.  User Commands: Custom logic in `vim.g.qllm_commands[cmd]`.
-2.  Command-Specific Override: Nested table in `vim.g.qllm_commands_defaults[cmd]`.
-3.  Global Defaults: Flat keys in `vim.g.qllm_commands_defaults`.
-4.  Global Provider Defaults: `vim.g.qllm_provider_defaults[provider]`.
-5.  Preset Provider Defaults: `vim.g.qllm_provider_defaults1[provider]`.
-6.  Hardcoded Defaults: Base values defined in the plugin code.
+| text_popup | Displays the result in a text popup window using Markdown (default). |
 
