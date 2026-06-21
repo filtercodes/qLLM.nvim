@@ -118,7 +118,7 @@ local function curl_callback(response, user_message_text, cb, bufnr)
     Api.run_finished_hook()
 end
 
-function OpenAIProvider.make_headers(payload)
+function OpenAIProvider.make_headers()
     local token = vim.g.qllm_openai_api_key or os.getenv("OPENAI_API_KEY")
     if not token then
         error(
@@ -126,14 +126,7 @@ function OpenAIProvider.make_headers(payload)
         )
     end
 
-    local headers = { ["Content-Type"] = "application/json", Authorization = "Bearer " .. token }
-
-    -- Responses API requires a beta header
-    if payload and payload.input then
-        headers["OpenAI-Beta"] = "assistants=v2" -- Required for managed search in Responses API
-    end
-
-    return headers
+    return { ["Content-Type"] = "application/json", Authorization = "Bearer " .. token }
 end
 
 function OpenAIProvider.handle_response(json, user_message_text, cb, bufnr)
@@ -212,20 +205,27 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
     if payload.input then
         url = vim.g.qllm_openai_responses_url or "https://api.openai.com/v1/responses"
     end
-    local headers = OpenAIProvider.make_headers(payload)
+    local headers = OpenAIProvider.make_headers()
     Api.run_started_hook()
 
     -- Extract command for logging and remove from strict payload
     local command_name = payload.command or "chat"
-    payload.command = nil
+
+    -- Build a clean payload copy WITHOUT the command field
+    -- payload.command = nil
+    local api_payload = vim.tbl_extend("force", {}, payload)
+    api_payload.command = nil
 
     -- TRACE: Log the outgoing request
-    Logger.log_request("openai", command_name, payload)
+    local ok, err = pcall(Logger.log_request, "openai", command_name, api_payload)
+    if not ok then
+        vim.notify("[qllm] Logger.log_request failed: " .. tostring(err), vim.log.levels.WARN)
+    end
 
     if type(cb) == "table" then
         -- Streaming Mode
-        payload.stream = true
-        local payload_str = vim.fn.json_encode(payload)
+        api_payload.stream = true
+        local payload_str = vim.fn.json_encode(api_payload)
         local partial_data = ""
         local full_text = ""
 
@@ -245,7 +245,10 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
                     -- End of stream
                     vim.schedule(function()
                         -- TRACE: Log the final response
-                        Logger.log_response("openai", command_name, full_text)
+                        local log_ok, log_err = pcall(Logger.log_response, "openai", command_name, full_text)
+                        if not log_ok then
+                            vim.notify("[qllm] Logger.log_response failed: " .. tostring(log_err), vim.log.levels.WARN)
+                        end
                         cb.on_complete(full_text)
                         Api.run_finished_hook()
                     end)
@@ -281,11 +284,10 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
                                 Api.run_finished_hook()
                             end)
                             return
-                        end
 
                         -- 1. Handle Status Updates (Responses API)
                         -- This provides visual feedback while the model is searching or thinking
-                        if json.type == "response.status_updated" and json.status then
+                        elseif json.type == "response.status_updated" and json.status then
                             -- We send status as a "thinking" chunk (empty text) to trigger spinner updates in Commands.run_cmd
                             -- Commands.run_cmd handles the logic for switching messages based on thinking state.
                             cb.on_chunk("", true) 
@@ -359,14 +361,17 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
         })
     else
         -- Legacy Mode
-        local payload_str = vim.fn.json_encode(payload)
+        local payload_str = vim.fn.json_encode(api_payload)
         curl.post(url, {
             body = payload_str,
             headers = headers,
             callback = function(response)
                 -- TRACE: Log the response in legacy mode too
                 curl_callback(response, user_message_text, function(txt)
-                    Logger.log_response("openai", command_name, table.concat(txt, "\n"))
+                    local log_ok, log_err = pcall(Logger.log_response, "openai", command_name, table.concat(txt, "\n"))
+                    if not log_ok then
+                        vim.notify("[qllm] Logger.log_response failed: " .. tostring(log_err), vim.log.levels.WARN)
+                    end
                     cb(txt)
                 end, bufnr)
             end,

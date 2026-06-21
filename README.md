@@ -63,7 +63,9 @@ pcall(function() require('vim._core.ui2').enable() end)
 
 ## Commands
 
-The top-level command is `:Chat`. The behavior is different depending on whether text is selected and/or arguments are passed.
+The top-level command is `:Chat`. Without passing any additional args it triggers a general LLM request using as input text selection and/or prompt text.
+
+![chat](examples/chat.gif?raw=true)
 
 ### Direct Provider commands & Presets
 In addition to `:Chat` (which uses globally configured default provider), you can invoke specific providers directly, bypassing default settings e.g.:
@@ -72,9 +74,9 @@ In addition to `:Chat` (which uses globally configured default provider), you ca
 
 Using these commands works exactly like `:Chat`, but routes the request to the specified API with its default model.
 
-There are also configurable presets: `:Chat1`, `:Chat2`, and `:Chat3`. To quickly switch between different models and providers without changing global configuration (e.g., setting `:Chat2` to always use Anthropic's Claude 3.5 Sonnet while `:Chat` remains local Ollama instance). See the "Overriding Command Configurations" section below for details.
+There are also configurable presets: `:Chat1`, `:Chat2`, and `:Chat3`. To flexibly switch between more different models or providers in the same context window (e.g., setting `:Chat2` to use Anthropic's Claude 4.6 Sonnet while `:Chat` default preset runs a local Ollama instance). See [Overriding command configurations](#overriding-command-configurations) section below for details.
 
-![chat](examples/chat.gif?raw=true)
+Commands are logically categorized into **Action** (direct text generation or editing) and **Analysis** (context and knowledge gathering). This distinction allows for orchestrating a development workflow by first building a context through analysis before executing targeted actions.
 
 ## List of default commands
 
@@ -202,14 +204,14 @@ vim.g.qllm_commands_defaults1 = {
 
 ### Search (Grounding) configuration
 
-`vim.g.qllm_search_provider` - Defines which provider to use for the default `:Chat search` command. Current supported options are `"gemini"`, `"openai"`, `"anthropic"` and `"local_grounding"`. Defaults to `"gemini"`. [As previously mentioned](#configuring-providers-and-models), set default grounding model using `vim.g.qllm_search_model_defaults`.
+`vim.g.qllm_search_provider` - Defines which provider to use for the default `:Chat search` command. Current supported options are `"gemini"`, `"openai"`, `"anthropic"` and `"local_grounding"`. Defaults to `"gemini"`. Set [default grounding model](#configuring-providers-and-models) using `vim.g.qllm_search_model_defaults`.
 
 `vim.g.qllm_show_search_sources` - Boolean (Default: `true`). Show or hide the links/citations used by LLM during a search in the popup UI. If you are using a smaller model you can set it to `false` to deal with strict context limits.
 
 `vim.g.qllm_ground_with_history` - Boolean (Default: `false`). If you want to send previous conversation history to the grounding model set it to `true`. This might be useful for model to pick up more info about the search term from the context, but also conversation history might confuse smaller local models or create biased grounding.
 
 ```lua
-vim.g.qllm_search_provider = "anthropic"
+vim.g.qllm_search_provider = "local_grounding"
 vim.g.qllm_show_search_sources = true
 vim.g.qllm_ground_with_history = true
 ```
@@ -629,19 +631,15 @@ The above adds a specific `Use trailing return type.` to the command `complete` 
 
 ### Templates
 
-The `system_message_template` and the `user_message_template` can contain template macros. For example:
-
 | Macro | Description |
 |------|-------------|
 | `{{filetype}}` | The `filetype` of the current buffer. |
 | `{{text_selection}}` | The selected text in the current buffer. |
 | `{{language}}` | The name of the programming language in the current buffer. |
-| `{{command_args}}` | Everything passed to the command as an argument, joined with spaces. See below. |
-| `{{language_instructions}}` | The found value in the `language_instructions` map. See below. |
+| `{{command_args}}` | Everything passed to the command as an argument, joined with spaces. |
+| `{{language_instructions}}` | The found value in the `language_instructions` map. |
 
 ### Callback types
-
-Callback types control what happens to the response.
 
 | Name      | Description |
 |--------------|----------|
