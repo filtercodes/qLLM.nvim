@@ -88,7 +88,7 @@ function Window.create_popup(is_full_height)
     local midpoint = max_row + (max_height / 2)
     local initial_row = math.floor(midpoint - (1 / 2))
 
-    -- If clan window, we use max_height, otherwise start with 1
+    -- If clean window, use max_height and max_row
     local start_height = is_full_height and max_height or 1
     local start_row = is_full_height and max_row or initial_row
 

@@ -50,24 +50,53 @@ function M.add_message(bufnr, role, content, model, command)
 
     local opts = vim.g.qllm_history_opts or {}
     local max_messages = opts.max_messages or 50
-    local summarize_enabled = opts.summarize_history ~= false
+    local max_tokens   = opts.max_tokens   or 8000
 
-    -- Check if we need to manage history size
-    if #history[bufnr] > max_messages then
-        if summarize_enabled then
-            if not is_summarizing[bufnr] then
-                M.summarize_history(bufnr)
+    -- Normalize legacy boolean values to the new string enum.
+    -- true  -> "messages"  (old default behaviour)
+    -- false -> "none"
+    local summarize_mode = opts.summarize_history
+    if summarize_mode == true  then summarize_mode = "messages" end
+    if summarize_mode == false then summarize_mode = "none"     end
+    summarize_mode = summarize_mode or "messages"
+
+    local should_summarize = false
+
+    if summarize_mode == "messages" then
+        should_summarize = #history[bufnr] > max_messages
+
+    elseif summarize_mode == "tokens" then
+        -- Token counting is async/expensive; only run it when the buffer
+        -- has grown past a cheap pre-check (avoids calling tiktoken on every keystroke).
+        local pre_check = #history[bufnr] > 5
+        if pre_check then
+            local full_text = ""
+            for _, msg in ipairs(history[bufnr]) do
+                full_text = full_text .. (msg.content or "")
             end
-        else
-            -- Sliding window: remove oldest message to make room
-            table.remove(history[bufnr], 1)
+            local ok, token_count = Utils.get_accurate_tokens(full_text)
+            if ok and token_count and token_count > max_tokens then
+                should_summarize = true
+            end
         end
 
-        -- Safety cap: If summarization is slow/failing, don't let history grow indefinitely.
-        -- Keep a buffer of roughly 2x the max before hard deleting oldest.
-        if #history[bufnr] > (max_messages * 2) then
+    -- "none" falls through: should_summarize stays false
+    end
+
+    if should_summarize then
+        if not is_summarizing[bufnr] then
+            M.summarize_history(bufnr)
+        end
+    elseif summarize_mode == "none" then
+        -- Sliding window: keep the buffer trimmed to max_messages
+        if #history[bufnr] > max_messages then
             table.remove(history[bufnr], 1)
         end
+    end
+
+    -- Safety cap regardless of mode: never let history grow to 2× the message limit.
+    if #history[bufnr] > (max_messages * 2) then
+        table.remove(history[bufnr], 1)
     end
 end
 
@@ -118,6 +147,30 @@ function M.get_messages(bufnr)
     end
 
     return messages_to_send
+end
+
+---Returns the total token count for a buffer's history, or nil if unavailable.
+---Uses Utils.get_accurate_tokens; returns nil gracefully if tiktoken is not installed.
+---@param bufnr number
+---@return number|nil token_count, string|nil err
+function M.get_history_token_count(bufnr)
+    local msgs = history[bufnr]
+    if not msgs or #msgs == 0 then
+        return 0, nil
+    end
+
+    local full_text = ""
+    for _, msg in ipairs(msgs) do
+        full_text = full_text .. (msg.content or "")
+    end
+
+    local ok, result = Utils.get_accurate_tokens(full_text)
+    if ok and result then
+        return result, nil
+    else
+        -- result contains the error string when ok == false
+        return nil, tostring(result or "tiktoken unavailable")
+    end
 end
 
 ---Clears the history for a given buffer.
@@ -204,14 +257,106 @@ function M.undo_last_exchange(bufnr)
     return popped_something
 end
 
----Applies the summary to the history.
+---Returns a list of all buffers that have active history.
+---@return table: list of { bufnr, message_count, last_command, last_model, last_timestamp }
+function M.list_history_buffers()
+    local result = {}
+    for bufnr, msgs in pairs(history) do
+        if msgs and #msgs > 0 then
+            -- Find last assistant message for metadata
+            local last_model, last_command, last_ts
+            for i = #msgs, 1, -1 do
+                if msgs[i].role == "assistant" then
+                    last_model   = msgs[i].model
+                    last_command = msgs[i].command
+                    last_ts      = msgs[i].timestamp
+                    break
+                end
+            end
+
+            -- Get a human-readable buffer name
+            local buf_name = vim.api.nvim_buf_is_valid(bufnr)
+                and vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":t")
+                or ("[invalid buf " .. bufnr .. "]")
+
+            if buf_name == "" then
+                buf_name = "[No Name]"
+            end
+
+            table.insert(result, {
+                bufnr       = bufnr,
+                buf_name    = buf_name,
+                msg_count   = #msgs,
+                last_model  = last_model or "unknown",
+                last_command= last_command or "unknown",
+                last_ts     = last_ts,
+            })
+        end
+    end
+
+    -- Sort by most recently active
+    table.sort(result, function(a, b)
+        return (a.last_ts or 0) > (b.last_ts or 0)
+    end)
+
+    return result
+end
+
+---Copies the history from one buffer to another.
+---Merges into destination if destination already has history.
+---@param src_bufnr number
+---@param dst_bufnr number
+---@param opts table|nil  { merge: bool (default false = replace) }
+---@return boolean, string  success, error_message
+function M.copy_history(src_bufnr, dst_bufnr, opts)
+    opts = opts or {}
+
+    if src_bufnr == dst_bufnr then
+        return false, "Source and destination buffers are the same."
+    end
+
+    local src_history = history[src_bufnr]
+    if not src_history or #src_history == 0 then
+        return false, string.format("No history found for buffer %d.", src_bufnr)
+    end
+
+    -- Deep copy so dst mutations don't affect src
+    local copied = {}
+    for _, msg in ipairs(src_history) do
+        table.insert(copied, vim.deepcopy(msg))
+    end
+
+    if opts.merge and history[dst_bufnr] and #history[dst_bufnr] > 0 then
+        -- Append src onto dst
+        for _, msg in ipairs(copied) do
+            table.insert(history[dst_bufnr], msg)
+        end
+    else
+        -- Replace
+        history[dst_bufnr] = copied
+    end
+
+    return true, nil
+end
+
+--- Resolves how many messages constitute the "summarizable" portion of history.
+---@param max_messages number
+---@return number
+local function resolve_summary_cutoff(max_messages)
+    local opts = vim.g.qllm_history_opts or {}
+    local pct  = tonumber(opts.summarize_percent) or 50
+    -- Clamp to [1, 100] so nonsense values don't break things
+    pct = math.max(1, math.min(100, pct))
+    return math.max(1, math.floor(max_messages * pct / 100))
+end
+
 ---@param bufnr
 ---@param summary_text string
 function M.apply_summary(bufnr, summary_text)
     local msgs = history[bufnr]
     local opts = vim.g.qllm_history_opts or {}
     local max_messages = opts.max_messages or 50
-    local half = math.floor(max_messages / 2)
+    local half = resolve_summary_cutoff(max_messages)
 
     if not msgs or #msgs < half then return end
     
@@ -243,7 +388,7 @@ function M.summarize_history(bufnr)
     
     local opts = vim.g.qllm_history_opts or {}
     local max_messages = opts.max_messages or 50
-    local half = math.floor(max_messages / 2)
+    local half = resolve_summary_cutoff(max_messages)
 
     -- Lazy require to avoid circular dependency
     local Providers = require("qllm.providers")

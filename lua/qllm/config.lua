@@ -104,10 +104,15 @@ vim.g.qllm_vertical_popup_size = "50%"
 
 -- History (short-term memory) configuration
 vim.g.qllm_history_opts = vim.tbl_extend("force", {
-    timeout = 1800,
-    max_messages = 50,
+    summarize_history = "messages",
+    -- "none"      -> no summarization, sliding window only
+    -- "messages"  -> summarize when message count exceeds max_messages
+    -- "tokens"    -> summarize when token count exceeds max_tokens
+    max_messages = 60,
+    max_tokens = 8000,
+    summarize_percent = 50,
     time_based_expiry = false,
-    summarize_history = true,
+    timeout = 1800, -- 30 minutes
 }, vim.g.qllm_history_opts or {})
 
 -- Knowledge Base Namespace (Wiki & Project Context)

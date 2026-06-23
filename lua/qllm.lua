@@ -143,6 +143,145 @@ function qllmModule.run_cmd(opts)
         --return
     end
 
+    -- hlist: show all buffers that have chat history
+    if command == "hlist" and #opts.fargs == 1 then
+        local entries = History.list_history_buffers()
+
+        if #entries == 0 then
+            vim.notify("No chat history exists for any buffer.", vim.log.levels.INFO, { title = "qLLM" })
+            return
+        end
+
+        -- Probe token-counting availability once on the first entry.
+        -- If it returns nil (no tiktoken / no python) we fall back to the
+        -- otherwise use compact layout so the user sees no ugly error columns.
+        local tokens_available = false
+        if #entries > 0 then
+            local probe, probe_err = History.get_history_token_count(entries[1].bufnr)
+            tokens_available = (probe ~= nil)
+        end
+
+        -- Header ────────────────────────────────────────────────────────
+        local lines
+        if tokens_available then
+            lines = { "  bufnr │ messages │ tokens  │ last model      │ buffer name" }
+            table.insert(lines, string.rep("─", 68))
+        else
+            lines = { "  bufnr │ messages │ last model      │ buffer name" }
+            table.insert(lines, string.rep("─", 60))
+        end
+
+        -- Rows ──────────────────────────────────────────────────────────
+        for _, e in ipairs(entries) do
+            local age = ""
+            if e.last_ts then
+                local secs = os.time() - e.last_ts
+                if     secs < 60   then age = secs                     .. "s ago"
+                elseif secs < 3600 then age = math.floor(secs / 60)   .. "m ago"
+                else                    age = math.floor(secs / 3600) .. "h ago"
+                end
+            end
+
+            if tokens_available then
+                local tok_count = History.get_history_token_count(e.bufnr) or 0
+                table.insert(lines, string.format(
+                    "  %-6d│ %-9d│ %-8d│ %-16s│ %s  (%s)",
+                    e.bufnr,
+                    e.msg_count,
+                    tok_count,
+                    e.last_model:sub(1, 16),
+                    e.buf_name,
+                    age
+                ))
+            else
+                table.insert(lines, string.format(
+                    "  %-6d│ %-9d│ %-16s│ %s  (%s)",
+                    e.bufnr,
+                    e.msg_count,
+                    e.last_model:sub(1, 16),
+                    e.buf_name,
+                    age
+                ))
+            end
+        end
+
+        -- Reuse the existing popup renderer
+        Ui.popup(lines, "markdown", bufnr, nil, nil, nil, nil, nil)
+        return
+    end
+
+    -- hcopy: copy history from a source buffer into the current buffer ─────
+    if command == "hcopy" then
+        --  :Chat hcopy          -> copy from alternate buffer (#)
+        --  :Chat hcopy 7        -> copy from bufnr 7
+        --  :Chat hcopy 7 merge  -> merge instead of replace
+
+        local src_bufnr
+        local merge = false
+
+        -- Parse args
+        for i = 2, #opts.fargs do
+            local arg = opts.fargs[i]
+            if arg == "merge" then
+                merge = true
+            else
+                local n = tonumber(arg)
+                if n then
+                    src_bufnr = n
+                else
+                    vim.notify(
+                        "hcopy: unrecognised argument '" .. arg .. "'. Usage: hcopy [bufnr] [merge]",
+                        vim.log.levels.ERROR, { title = "qLLM" }
+                    )
+                    return
+                end
+            end
+        end
+
+        -- Default: use the alternate buffer
+        if not src_bufnr then
+            src_bufnr = vim.fn.bufnr('#')
+            if src_bufnr == -1 then
+                vim.notify(
+                    "hcopy: no alternate buffer found. Specify a bufnr explicitly, e.g. :Chat hcopy 3",
+                    vim.log.levels.WARN, { title = "qLLM" }
+                )
+                return
+            end
+        end
+
+        -- Validate source
+        if not vim.api.nvim_buf_is_valid(src_bufnr) then
+            vim.notify(
+                string.format("hcopy: buffer %d is not valid.", src_bufnr),
+                vim.log.levels.ERROR, { title = "qLLM" }
+            )
+            return
+        end
+
+        local ok, err = History.copy_history(src_bufnr, bufnr, { merge = merge })
+
+        if ok then
+            local src_entries = History.list_history_buffers()
+            local src_count = 0
+            for _, e in ipairs(src_entries) do
+                if e.bufnr == src_bufnr then src_count = e.msg_count; break end
+            end
+
+            vim.notify(
+                string.format(
+                    "Copied %d messages from buf %d → buf %d%s.",
+                    src_count, src_bufnr, bufnr,
+                    merge and " (merged)" or " (replaced)"
+                ),
+                vim.log.levels.INFO, { title = "qLLM" }
+            )
+        else
+            vim.notify("hcopy failed: " .. (err or "unknown error"), vim.log.levels.ERROR, { title = "qLLM" })
+        end
+        return
+    end
+
     -- Handle `wiki_index` as a special case
     if command == "wiki_index" then
         local KB = require("qllm.providers.knowledge_base")

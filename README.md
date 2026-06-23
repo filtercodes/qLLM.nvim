@@ -15,8 +15,9 @@ Focus is on context management, knowledge extraction and using direct commands t
 | External (Wiki only) | `sqlite3` CLI and the `sqlite-vec` shared library (see [setup guide](#vector-search-setup-sqlite-vec)). |
 | Dependencies | [plenary.nvim](https://github.com/nvim-lua/plenary.nvim) and [nui.nvim](https://github.com/MunifTanjim/nui.nvim). |
 
-* Set environment variable for your preferred API key e.g. `ANTHROPIC_API_KEY` [Claude API key](https://platform.claude.com/settings/workspaces/default/keys).
+Optionally install tiktoken: `python3 -m pip install tiktoken` - for token tracking support.
 
+* Set environment variable for your preferred API key e.g. `ANTHROPIC_API_KEY` [Claude API key](https://platform.claude.com/settings/workspaces/default/keys).
 
 Installing with [lazy.nvim](https://github.com/folke/lazy.nvim).
 
@@ -116,13 +117,20 @@ Commands are logically categorized into **Action** (direct text generation or ed
 | wiki_save  |  text selection or none | Saves current buffer or visual selection into the Wiki Knowledge Base for future retrieval. |
 | wiki_lint  |  none | Runs the Auditor to find isolated notes or 'Shadow Concepts' in the Wiki. |
 
-### Other
+### Conversation management
 
 | Command      | Input | Description |
 |--------------|---- |------------------------------------|
 | recall  |  none or number | Displays the last assistant response from the chat history in a popup without altering the history. Optionally accept a number to go further back (e.g., `:Chat recall 2`). |
 | undo  |  none | Removes the last exchange (prompt and the assistant's response) from the chat history. Useful for reverting a bad conversation turn. |
-| clear  |  none | Clears the short-term chat memory to start fresh. |
+| clear  |  none | Completely clears the conversation to start fresh. |
+| hlist  |  none | Shows the information about conversation history: buffer number, the number of messages (and tokens if tiktoken is installed), last model, name. |
+| hcopy  |  number and "merge" | Copy entire buffer history to another buffer. If passing merge command after buffer number, both buffers will be merged. |
+
+### Other
+
+| Command      | Input | Description |
+|--------------|---- |------------------------------------|
 | popup  |  none | Opens an empty popup window - to use for crafting multiline prompt, copy pasting text, etc. |
 | help  |  none | Displays the help guide. |
 
@@ -316,23 +324,33 @@ qLLM manages history automatically. You can tune its behavior using the `vim.g.q
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| max_messages | 50 | Total messages to retain before summarizing older ones. |
-| time_based_expiry | false | If `true`, history automatically clears after the `timeout`. |
-| timeout | 1800 | Inactivity window (in seconds) before history expires (if `time_based_expiry` set to `true`). |
-| summarize_history | true | If `true`, compresses the first half of the buffer into a summary when `max_messages` is reached. |
+| summarize_history | "messages" | When on, it compresses percentage of the older buffer into a summary when `max_messages` (or `max_tokens`) is reached, otherwise uses hard sliding window to drop the oldest ones. |
 | summarize_model | *(Global)* | The model to use for background summarization. |
 | summarize_provider | *(Global)* | The provider to use for background summarization. |
+| max_messages | 50 | Total messages to retain before summarizing older ones. |
+| summarize_percent | 50 | What percentage of messages will be summarized. Default is 50% - half. |
+| max_tokens | 80000 | Number of tokens to reach for summarization logic to trigger. |
+| time_based_expiry | false | If `true`, history automatically clears after the `timeout`. |
+| timeout | 1800 | Inactivity window (in seconds) before history expires (if `time_based_expiry` set to `true`). |
+
+`summarize_history` takes string as an input. Options are:
+- `"none"`      -- no summarization, sliding window only
+- `"messages"`  -- summarize when message count exceeds `max_messages`
+- `"tokens"`    -- summarize when token count exceeds `max_tokens`
+
+*Note: Python3 and `tiktoken` installed are requirements for using token based history management.
 
 Example configuration (`init.lua`):
 
 ```lua
 -- Modern history setup with background summarization
 vim.g.qllm_history_opts = {
-    max_messages = 50,
-    time_based_expiry = false,
-    summarize_history = true,
+    summarize_history = "tokens",
+    max_tokens = 80000,             -- 80k should be a safe zone for most modern models
+    summarize_percent = 30,         -- Rather subtle summarise only 30% of oldest messages
     summarize_provider = "openai",
     summarize_model = "gpt-4o-mini" -- Use a cheap model for background work
+    time_based_expiry = false,      -- Turn off amnesia mode
 }
 ```
 
@@ -356,6 +374,32 @@ end
 vim.keymap.set("n", "<leader>qu", function() qllm.undo() end)
 vim.keymap.set("n", "<leader>qc", function() qllm.clear() end)
 ```
+
+#### Chat History Copy and Merge
+
+To copy conversation history from one buffer to another use the following workflow.
+- You're in buf 3, had a long chat.
+- Run the command:
+```
+:Chat hlist
+```
+- It will list the current conversation information in a popup list.
+
+| bufnr | messages | last model | buffer name |
+|-------|----------|------------|-------------|
+| 3 | 12 | claude-3-5 | main.py  (2m ago) |
+| 1 | 4 | gpt-4o | utils.py  (1h ago) |
+
+- Go to the new buffer
+`:enew`
+- Now in the new buffer, blank slate, run any of the `hcopy` variants:
+```
+:Chat hcopy          -- copies from buf 3 (alternate buffer, the one you just left)
+:Chat hcopy 3        -- explicit — same result
+:Chat hcopy 3 merge  -- if buf 5 already had some history, append buf 3's on it
+```
+
+The **alternate buffer** default (`vim.fn.bufnr('#')`) covers the most natural case — you just left the buffer you want to branch from, so number lookup is not needed at all.
 
 ## Popup options
 

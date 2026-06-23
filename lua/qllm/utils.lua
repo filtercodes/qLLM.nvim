@@ -182,22 +182,34 @@ function Utils.fix_indentation(bufnr, start_row, end_row, new_lines)
 end
 
 function Utils.get_accurate_tokens(content)
-    local ok, result = pcall(
-        vim.api.nvim_exec2,
-        string.format([[
-python3 << EOF
-import tiktoken
-encoder = tiktoken.get_encoding("cl100k_base")
-encoded = encoder.encode("""%s""")
-print(len(encoded))
-EOF
-]], content), true)
-    if ok and #result > 0 then
-        return ok, tonumber(result)
-    end
-    return ok, 0
-end
+    content = content or ""
 
+    local py_code = [[
+import sys
+try:
+    import tiktoken
+except Exception as e:
+    print(f"ERROR: {e}")
+    raise SystemExit(1)
+
+text = sys.stdin.read()
+encoder = tiktoken.get_encoding("cl100k_base")
+print(len(encoder.encode(text)))
+]]
+
+    local out = vim.fn.system({ "python3", "-c", py_code }, content)
+
+    if vim.v.shell_error ~= 0 then
+        return false, vim.trim(out ~= "" and out or "tiktoken unavailable")
+    end
+
+    local token_count = tonumber(vim.trim(out))
+    if not token_count then
+        return false, "failed to parse token count"
+    end
+
+    return true, token_count
+end
 
 function Utils.remove_trailing_whitespace(lines)
     for i, line in ipairs(lines) do
