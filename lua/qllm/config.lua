@@ -167,12 +167,6 @@ vim.g.qllm_commands_defaults = {
         user_message_template = "{{command_args}}",
         allow_empty_text_selection = true,
     },
-    ["wiki_index"] = {
-        allow_empty_text_selection = true,
-    },
-    ["wiki_save"] = {
-        allow_empty_text_selection = true,
-    },
     ["files"] = {
         user_message_template = "{{text_selection}}\n\n{{command_args}}",
         default_prompt = "Analyze the provided files and provide a summary of their purpose and contents.",
@@ -183,9 +177,6 @@ vim.g.qllm_commands_defaults = {
         default_prompt = "Analyze the provided chunks and explain thier purpose and contents",
         allow_empty_text_selection = true,
     },
-    ["init"] = {
-        allow_empty_text_selection = true,
-    },
     ["complete"] = {
         user_message_template =
         "I have the following {{language}} code: \n\n{{text_selection}}\n\nComplete the rest. Use best practices and descriptive commenting. {{language_instructions}} Only return the code snippet and nothing else.",
@@ -193,6 +184,7 @@ vim.g.qllm_commands_defaults = {
             ["*"] = "Use modern {{language}} syntax and features.",
         },
         callback_type = "replace_lines",
+        allow_empty_text_selection = false,
         thinking = false,
     },
     ["edit"] = {
@@ -202,6 +194,7 @@ vim.g.qllm_commands_defaults = {
             ["*"] = "Use modern {{language}} syntax and features.",
         },
         callback_type = "replace_lines",
+        allow_empty_text_selection = false,
     },
     ["explain"] = {
         user_message_template = "{{command_args}}\n{{text_selection}}",
@@ -220,6 +213,7 @@ vim.g.qllm_commands_defaults = {
             ["*"] = "Use the standard documentation style (e.g. Docstrings, JSDoc, Doxygen) typical for {{language}}.",
         },
         callback_type = "replace_lines",
+        allow_empty_text_selection = false,
     },
     ["opt"] = {
         user_message_template =
@@ -228,6 +222,7 @@ vim.g.qllm_commands_defaults = {
             ["*"] = "Use modern {{language}} syntax and best practices.",
         },
         callback_type = "replace_lines",
+        allow_empty_text_selection = false,
     },
     ["tests"] = {
         user_message_template =
@@ -242,6 +237,10 @@ vim.g.qllm_commands_defaults = {
         callback_type = "text_popup",
         allow_empty_text_selection = true,
     },
+    ["popup"]= {
+        callback_type = "text_popup",
+        allow_empty_text_selection = true,
+    },
     ["search"] = {
         user_message_template = "{{command_args}}\n{{text_selection}}\nIf sufficient, use the provided search results as a source and don't justify the usege of search or mention that you are searching, just answer.",
         system_message_template = "You are a helpful assistant. Use the web search tool to find up-to-date information to answer the user's query comprehensively.",
@@ -249,18 +248,6 @@ vim.g.qllm_commands_defaults = {
         allow_empty_text_selection = true,
         is_search_command = true,
         loading_message = "Searching the web...",
-    },
-    ["clear"] = {
-        allow_empty_text_selection = true,
-    },
-    ["recall"] = {
-        allow_empty_text_selection = true,
-    },
-    ["undo"] = {
-        allow_empty_text_selection = true,
-    },
-    ["help"] = {
-        allow_empty_text_selection = true,
     },
 }
 

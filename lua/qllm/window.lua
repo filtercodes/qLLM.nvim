@@ -43,8 +43,9 @@ function Window.create_vertical()
     return split_obj, vim.o.lines, 0, width, 0
 end
 
-function Window.create_popup()
+function Window.create_popup(is_full_height)
     -- 1. Resolve window options (wrap, etc.)
+    is_full_height = is_full_height or false -- Default to false
     local window_options = vim.deepcopy(vim.g.qllm_popup_window_options or {})
 
     -- 2. Resolve base options from user config
@@ -77,13 +78,19 @@ function Window.create_popup()
     local max_width = parse_dim(width_raw, columns)
     local max_height = parse_dim(height_raw, usable_h)
 
+    local pos_val = parse_dim(options.position or "50%", usable_h)
+
     -- Calculate centered position within usable area for the MAX height
-    local max_row = math.floor((usable_h - max_height) / 2) + tabline_h
+    local max_row = math.floor(pos_val - (max_height / 2)) + tabline_h
     local col = math.floor((columns - max_width) / 2)
 
     -- Calculate initial row for 1-line height to start centered
     local midpoint = max_row + (max_height / 2)
     local initial_row = math.floor(midpoint - (1 / 2))
+
+    -- If clan window, we use max_height, otherwise start with 1
+    local start_height = is_full_height and max_height or 1
+    local start_row = is_full_height and max_row or initial_row
 
     -- 4. Return the element and its max constraints
     local ui_elem = Popup({
@@ -92,12 +99,12 @@ function Window.create_popup()
         border = { style = vim.g.qllm_popup_style or "rounded" },
         relative = options.relative or "editor",
         position = {
-            row = initial_row,
+            row = start_row,
             col = col,
         },
         size = {
             width = max_width,
-            height = 1, -- Start small
+            height = start_height,
         },
         win_options = window_options,
     })

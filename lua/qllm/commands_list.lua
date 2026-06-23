@@ -8,7 +8,7 @@ local cmd_default = {
     system_message_template = "",
     user_message_template = "",
     callback_type = "text_popup",
-    allow_empty_text_selection = false,
+    allow_empty_text_selection = true,
     extra_params = {}, -- extra parameters sent to the API
 }
 

@@ -166,6 +166,15 @@ function Ui.create_window(filetype, bufnr, start_row, start_col, end_row, end_co
         end)
     end
 
+    vim.api.nvim_buf_set_option(ui_elem.bufnr, "filetype", filetype)
+
+    -- Mappings
+    ui_elm = Ui.window_mapping(ui_elem)
+
+    return ui_elm
+end
+
+function Ui.window_mapping(ui_elem)
     -- Mappings
     ui_elem:map("n", vim.g.qllm_ui_commands.quit, function()
         ui_elem:unmount()
@@ -182,8 +191,6 @@ function Ui.create_window(filetype, bufnr, start_row, start_col, end_row, end_co
             end
         end, { noremap = true, silent = true })
     end
-
-    vim.api.nvim_buf_set_option(ui_elem.bufnr, "filetype", filetype)
 
     ui_elem:map("n", vim.g.qllm_ui_commands.use_as_output, function()
         local lines = vim.api.nvim_buf_get_lines(ui_elem.bufnr, 0, -1, false)

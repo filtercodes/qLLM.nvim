@@ -123,6 +123,7 @@ Commands are logically categorized into **Action** (direct text generation or ed
 | recall  |  none or number | Displays the last assistant response from the chat history in a popup without altering the history. Optionally accept a number to go further back (e.g., `:Chat recall 2`). |
 | undo  |  none | Removes the last exchange (prompt and the assistant's response) from the chat history. Useful for reverting a bad conversation turn. |
 | clear  |  none | Clears the short-term chat memory to start fresh. |
+| popup  |  none | Opens an empty popup window - to use for crafting multiline prompt, copy pasting text, etc. |
 | help  |  none | Displays the help guide. |
 
 ## Overriding command configurations
@@ -161,7 +162,7 @@ vim.g.qllm_commands_defaults = {
 | max_tokens | 16384 | The maximum number of tokens to use including the prompt tokens. |
 | user_message_template | "" | The primary prompt template. |
 | callback_type | "text_popup" | Controls UI behavior (`replace_lines` or `text_popup`). |
-| allow_empty_text_selection | false | If true, command runs without a visual selection. |
+| allow_empty_text_selection | true | If false, command doesn't run without a visual selection. |
 | language_instructions | {} | Map of `filetype` -> specific instructions. |
 | extra_params | {} | Table of custom parameters for the API (e.g., `top_p`, `stop_sequences`). |
 

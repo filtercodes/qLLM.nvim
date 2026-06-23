@@ -109,6 +109,40 @@ function qllmModule.run_cmd(opts)
         return
     end
 
+    -- Handle popup command as a special case
+    if command == "popup" then
+        local Window = require("qllm.window")
+        ui_elem, max_h, max_row, max_w, col = Window.create_popup(true)
+        ui_elem:mount()
+        local ui_bufnr = ui_elem.bufnr
+        Ui.sync_window_size(ui_bufnr)
+
+        -- Event: Handle BufLeave - buffer cleanup and unmounting
+        local event = require("nui.utils.autocmd").event
+        if vim.g.qllm_close_on_leave then
+            -- Default: Close when clicking away/switching buffers
+            ui_elem:on(event.BufLeave, function()
+                ui_to_owner_map[ui_bufnr] = nil
+                active_popups[ui_bufnr] = nil
+                ui_elem:unmount()
+            end)
+        else
+        -- Persistent: Only clean up state when explicitly closed (via q, <esc>, etc.)
+            ui_elem:on(event.BufDelete, function()
+                ui_to_owner_map[ui_bufnr] = nil
+                active_popups[ui_bufnr] = nil
+            end)
+        end
+
+        vim.api.nvim_buf_set_option(ui_elem.bufnr, "filetype", filetype)
+
+        -- Mappings
+        ui_elm = Ui.window_mapping(ui_elem)
+
+        return ui_elm
+        --return
+    end
+
     -- Handle `wiki_index` as a special case
     if command == "wiki_index" then
         local KB = require("qllm.providers.knowledge_base")
