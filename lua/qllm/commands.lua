@@ -163,7 +163,7 @@ function Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts
                   
                   -- Add to history only if we have content
                   if full_text and full_text ~= "" then
-                      History.add_message(bufnr, "user", history_user_message or user_message_text)
+                      History.add_message(bufnr, "user", history_user_message or user_message_text, nil, nil, overrides and overrides.history_metadata)
                       History.add_message(bufnr, "assistant", full_text)
                   end
     
@@ -219,7 +219,7 @@ function Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts
       }
 
       -- Call Provider with Stream Handlers
-      provider.make_call(request, user_message_text, stream_handlers, bufnr)
+      provider.make_call(request, user_message_text, stream_handlers, bufnr, overrides)
   else
       -- Legacy / Non-Streaming Mode
       local new_callback = function(lines)
@@ -228,7 +228,7 @@ function Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts
           -- For now, most providers are streaming.
           cmd_opts.callback(lines, bufnr, start_row, start_col, end_row, end_col)
       end
-      provider.make_call(request, user_message_text, new_callback, bufnr)
+      provider.make_call(request, user_message_text, new_callback, bufnr, overrides)
   end
 end
 

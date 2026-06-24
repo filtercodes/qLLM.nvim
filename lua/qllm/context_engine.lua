@@ -62,40 +62,17 @@ end
 
 ---Parses the input string to find delimited blocks, search queries, and prompt.
 ---Handles escaped characters like \" or \`.
----@param input string The full command input (e.g. 'files [file 1.lua] "my query" prompt')
+---@param input string The full command input (e.g. 'files [file 1.lua] my query -- prompt')
 ---@param command string? The command being executed.
 ---@return table extracted List of strings from file delimiters.
----@return string? query Content from "query" brackets (only for scan).
+---@return string? query Content from query ' -- ' separator (only for scan).
 ---@return string remaining Everything else.
 function M.parse_input(input, command)
     local extracted = {}
     local remaining = input
     local query = nil
 
-    -- 1. Extract Quoted Query "..." (Only for scan command)
-    if command == "scan" then
-        local q_start = remaining:find('"')
-        if q_start then
-            local q_content = ""
-            local i = q_start + 1
-            while i <= #remaining do
-                local char = remaining:sub(i, i)
-                if char == "\\" then
-                    q_content = q_content .. (remaining:sub(i + 1, i + 1) or "")
-                    i = i + 2
-                elseif char == '"' then
-                    query = q_content
-                    remaining = vim.trim(remaining:sub(1, q_start-1) .. " " .. remaining:sub(i + 1))
-                    break
-                else
-                    q_content = q_content .. char
-                    i = i + 1
-                end
-            end
-        end
-    end
-
-    -- 2. Extract File Blocks [...]
+    -- 1. Extract File Blocks [...]
     local function extract_next_file(str)
         local delimiters = {
             { '[', ']' }
@@ -142,7 +119,94 @@ function M.parse_input(input, command)
         end
     end
 
+    -- 2. Extract Query via ' -- ' separator (Only for scan command)
+    if command == "scan" then
+        -- Find the first occurrence of " -- " (space-double-dash-space)
+        local sep_start, sep_end = remaining:find(" %-%- ")
+        if sep_start then
+            query = vim.trim(remaining:sub(1, sep_start - 1))
+            remaining = vim.trim(remaining:sub(sep_end + 1))
+        else
+            -- If no separator, the entire remaining string is the query
+            query = remaining
+            remaining = ""
+        end
+    end
+
     return extracted, query, remaining
+end
+
+---Finds files containing the query using rg, git grep, or grep from the project root.
+---@param query string
+---@param project_root string
+---@return table files
+function M.find_files_with_query(query, project_root)
+    local files = {}
+    local cmd
+    if vim.fn.executable("rg") == 1 then
+        cmd = string.format("rg -l --max-count 1 -F %s %s", vim.fn.shellescape(query), vim.fn.shellescape(project_root))
+    elseif vim.fn.executable("git") == 1 and vim.fn.isdirectory(project_root .. ".git") == 1 then
+        cmd = string.format("git -C %s grep -l -F %s", vim.fn.shellescape(project_root), vim.fn.shellescape(query))
+    elseif vim.fn.executable("grep") == 1 then
+        cmd = string.format("grep -r -l -F %s %s", vim.fn.shellescape(query), vim.fn.shellescape(project_root))
+    end
+
+    if cmd then
+        local output = vim.fn.systemlist(cmd)
+        if vim.v.shell_error == 0 or #output > 0 then
+            for _, line in ipairs(output) do
+                local path = vim.trim(line)
+                if path ~= "" and vim.fn.filereadable(path) == 1 then
+                    table.insert(files, path)
+                end
+            end
+        end
+    end
+
+    return files
+end
+
+---Attempts to find the containing code block (function/method/class) for a matched line using Tree-sitter.
+---@param content string
+---@param filetype string
+---@param line_num number
+---@return number? start_line, number? end_line
+function M.get_containing_block_range(content, filetype, line_num)
+    local ok, parser = pcall(vim.treesitter.get_string_parser, content, filetype)
+    if not ok or not parser then return nil end
+
+    local tree = parser:parse()[1]
+    if not tree then return nil end
+    local root = tree:root()
+    if not root then return nil end
+
+    local line_idx = line_num - 1
+    local node = root:descendant_for_range(line_idx, 0, line_idx, 1000)
+    if not node then return nil end
+
+    local function is_code_block(node_type)
+        if node_type == "program" or node_type == "source_file" or node_type == "translation_unit" then
+            return false
+        end
+        local t = node_type:lower()
+        return t:find("function")
+            or t:find("method")
+            or t:find("class")
+            or t:find("struct")
+            or t:find("impl")
+            or t:find("definition")
+            or t:find("declaration")
+    end
+
+    local current = node
+    while current do
+        if is_code_block(current:type()) then
+            local start_row, _, end_row, _ = current:range()
+            return start_row + 1, end_row + 1
+        end
+        current = current:parent()
+    end
+    return nil
 end
 
 ---Performs a hybrid search (scan) across files and returns matching chunks.
@@ -168,12 +232,26 @@ function M.scan_search(files, query, context_lines)
         end
 
         if #matches > 0 then
+            local content = table.concat(lines, "\n")
+            local filetype = vim.filetype.match({ filename = path }) or "text"
             results = results .. string.format("\nFILE: %s (Matches for '%s')\n", vim.fn.fnamemodify(path, ":."), query)
             local last_end = -1
 
             for _, line_num in ipairs(matches) do
-                local start_i = math.max(1, line_num - ctx)
-                local end_i = math.min(#lines, line_num + ctx)
+                local start_i, end_i
+
+                -- Attempt Tree-Sitter block extraction
+                local ts_start, ts_end = M.get_containing_block_range(content, filetype, line_num)
+                if ts_start and ts_end then
+                    start_i = ts_start
+                    end_i = ts_end
+                end
+
+                -- Fallback to standard context window if TS failed
+                if not start_i or not end_i then
+                    start_i = math.max(1, line_num - ctx)
+                    end_i = math.min(#lines, line_num + ctx)
+                end
 
                 if start_i <= last_end then
                     start_i = last_end + 1
@@ -184,7 +262,7 @@ function M.scan_search(files, query, context_lines)
                     for k = start_i, end_i do
                         table.insert(chunk, lines[k])
                     end
-                    results = results .. string.format("L%d-L%d:\n```\n%s\n```\n", start_i, end_i, table.concat(chunk, "\n"))
+                    results = results .. string.format("L%d-L%d:\n```%s\n%s\n```\n", start_i, end_i, filetype, table.concat(chunk, "\n"))
                     last_end = end_i
                 end
             end
@@ -222,6 +300,7 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
     local text_selection = current_selection or ""
     overrides = overrides or {}
     overrides.ground_with_history = false
+    overrides.history_metadata = {}
 
     -- Project Context Injection
     -- 2. Project Context (System Project Map) Injection
@@ -234,7 +313,7 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
         end
     end
 
-    -- Fallback: If no files were wrapped in quotes, scan the prompt for raw paths
+    -- Fallback: If no files were wrapped, scan the prompt for raw paths
     -- 3. File Context Resolution
     -- Fallback for unquoted files if it's a files/scan command
     if #extracted_blocks == 0 and (command == "files" or command == "scan") then
@@ -283,7 +362,17 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
             command = "files"
         end
     elseif command == "scan" then
-        resolved_files = { vim.api.nvim_buf_get_name(current_bufnr) }
+        local search_query = query or remaining_prompt
+        if search_query and search_query ~= "" then
+            resolved_files = M.find_files_with_query(search_query, project_root)
+        end
+        -- Fallback to current file if no project matches found or search query is empty
+        if #resolved_files == 0 then
+            local current_file = vim.api.nvim_buf_get_name(current_bufnr)
+            if current_file ~= "" then
+                resolved_files = { current_file }
+            end
+        end
     end
 
     -- 4. Determine if we should inject project context (only if relevant to current project)
@@ -311,14 +400,17 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
         end
     end
 
-    -- 5. Command-Specific Formatting
+    -- 5. Command-Specific Formatting and Metadata
+    local context_files_display = #extracted_blocks > 0 and table.concat(extracted_blocks, ", ")
+        or (#resolved_files > 0 and vim.fn.fnamemodify(resolved_files[1], ":t") or "")
+
     if #resolved_files > 0 then
         if command == "files" then
             local context_text = M.format_files_as_context(resolved_files)
             if command_args == "" then
-                overrides.history_user_message = "FILES ANALYSIS: " .. table.concat(extracted_blocks, ", ")
+                overrides.history_user_message = "FILES ANALYSIS: " .. context_files_display
             else
-                overrides.history_user_message = "FILES: " .. command_args .. " (" .. #resolved_files .. " files)"
+                overrides.history_user_message = "FILES: " .. command_args .. " in [" .. context_files_display .. "]"
             end
             -- Append original text_selection (if any remains) to the file context
             text_selection = system_context .. context_text .. ((text_selection ~= "") and ("\n[USER SELECTION]\n" .. text_selection) or "")
@@ -333,7 +425,8 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
                 if query and remaining_prompt ~= "" then
                     -- Both <query> and a prompt provided: Send to LLM
                     text_selection = system_context .. context_text
-                    overrides.history_user_message = "SCAN: '" .. search_query .. "' in " .. table.concat(extracted_blocks, ", ")
+                    overrides.history_user_message = "SCAN: " .. search_query .. " -- " .. remaining_prompt .. " in [" .. context_files_display .. "]"
+                    overrides.history_metadata.search_results = context_text
                 else
                     -- No prompt provided: Just display results in a popup, bypass LLM.
                     local Ui = require("qllm.ui")
@@ -349,11 +442,47 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
             -- For other commands (e.g. :Chat [A.lua] explain), just inject the files as context
             local context_text = M.format_files_as_context(resolved_files)
             text_selection = system_context .. context_text .. ((text_selection ~= "") and ("\n[USER SELECTION]\n" .. text_selection) or "")
+
+            -- Override history user message to show clean context
+            local suffix = " in [" .. context_files_display .. "]"
+            local prompt_str = command_args ~= "" and command_args or (command:upper() .. suffix)
+            if command_args ~= "" then
+                prompt_str = prompt_str .. suffix
+            end
+            overrides.history_user_message = prompt_str
         end
     else
         -- Standard 'explain' injection
         -- No files, just inject system context into text_selection
         text_selection = system_context .. text_selection
+
+        -- For other commands with visual selection but no files
+        if text_selection ~= "" and text_selection ~= system_context then
+            local prompt_str = command_args ~= "" and command_args or (command:upper() .. " (selection)")
+            if command_args ~= "" then
+                prompt_str = prompt_str .. " (selection)"
+            end
+            overrides.history_user_message = prompt_str
+        end
+    end
+
+    -- Setup overrides.history_metadata for structured storage
+    overrides.history_metadata = overrides.history_metadata or {}
+    if #resolved_files > 0 then
+        overrides.history_metadata.files = resolved_files
+    end
+    -- Keep only the pure selection context (without the prepended system context)
+    local selection_context = current_selection or ""
+    if command_args == selection_context then
+        -- Avoid saving the prompt text itself as a duplicate selection
+        selection_context = ""
+    end
+    if selection_context ~= "" then
+        overrides.history_metadata.selection = selection_context
+    end
+
+    if command == "search" then
+        overrides.history_user_message = command_args ~= "" and command_args or "SEARCH"
     end
 
     -- Final fallback for command if it's still not valid

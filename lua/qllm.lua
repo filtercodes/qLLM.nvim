@@ -282,6 +282,18 @@ function qllmModule.run_cmd(opts)
         return
     end
 
+    -- Handle `heavy` as a special case
+    if command == "heavy" then
+        local level = opts.fargs[2]
+        if level == "low" or level == "medium" or level == "high" then
+            vim.g.qllm_history_heaviness = level
+            vim.notify("History heaviness set to: " .. level, vim.log.levels.INFO, { title = "qLLM" })
+        else
+            vim.notify("Usage: :Chat heavy [low|medium|high]. Current: " .. (vim.g.qllm_history_heaviness or "low"), vim.log.levels.WARN, { title = "qLLM" })
+        end
+        return
+    end
+
     -- Handle `wiki_index` as a special case
     if command == "wiki_index" then
         local KB = require("qllm.providers.knowledge_base")
@@ -378,11 +390,11 @@ function qllmModule.run_cmd(opts)
         Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts, overrides)
     end
 
-    -- If command is context-heavy, ensure project context is fresh before proceeding.
-    local is_context_heavy = command == "files" or command == "scan" or command == "explain" 
+    -- If command needs project map context, ensure it is fresh before proceeding.
+    local needs_project_map = command == "files" or command == "scan" or command == "explain"
         or opts.args:find("%[") ~= nil -- Prompt contains file blocks
 
-    if is_context_heavy then
+    if needs_project_map then
         local ProjectContext = require("qllm.project_context")
         ProjectContext.ensure_fresh_context(execute_with_fresh_context)
     else

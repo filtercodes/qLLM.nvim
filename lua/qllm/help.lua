@@ -14,7 +14,7 @@ local command_descriptions = {
     wiki = "Performs a semantic search across your local Knowledge Base using Hierarchical RAG (Map & Territory).",
     wiki_index = "Scans your KB folder and performs a 'one-pass' indexing with LLM-generated summaries and vectors.",
     wiki_lint = "Runs the Global Auditor to find 'Shadow Concepts' and 'Orphan Files', populating the Quickfix list.",
-    wiki_save = "Saves your current buffer or visual selection directly into the Knowledge Base for future retrieval.",
+    wiki_save = "Saves the current buffer or visual selection directly into the Knowledge Base for future retrieval.",
     doc = "Generates documentation for the selected code. It produces function/method documentation (e.g., Javadoc, Doxygen) following best practices for the language.",
     tests = "Generates unit tests for the selected code. It attempts to use standard testing frameworks appropriate for the language (e.g., JUnit for Java, gtest for C++).",
     opt = "Suggests optimizations for the selected code. It looks for performance improvements or cleaner ways to implement the same logic.",
@@ -23,6 +23,9 @@ local command_descriptions = {
     undo = "Removes the last exchange (your prompt and the assistant's response) from the chat history. Useful for undoing a bad conversation turn.",
     clear = "Clears the chat history for the current buffer. This resets the conversation context.",
     help = "Displays this help file, listing available commands, keybindings, and configuration options.",
+    heavy = "Configures the heaviness level of the chat history. Usage: `:Chat heavy [low|medium|high]`. Defaults to low.",
+    hcopy = "Copies chat history from a source buffer into the current buffer. Usage: `:Chat hcopy [src_bufnr] [merge]`.",
+    hlist = "Lists all buffers with active chat history in a popup table.",
 }
 
 function M.get_help_lines()
@@ -50,7 +53,8 @@ function M.get_help_lines()
         "explain", "files", "scan",
         "wiki", "wiki_index", "wiki_save", "wiki_lint",
         "doc", "tests", "opt", "debug",
-        "recall", "undo", "clear", "help"
+        "recall", "undo", "clear", "help",
+        "heavy", "hcopy", "hlist"
     }
 
     local all_commands = {}

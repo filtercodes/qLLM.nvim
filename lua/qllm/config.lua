@@ -103,6 +103,8 @@ vim.g.qllm_horizontal_popup_size = "40%"
 vim.g.qllm_vertical_popup_size = "50%"
 
 -- History (short-term memory) configuration
+vim.g.qllm_history_heaviness = vim.g.qllm_history_heaviness or "low"
+
 vim.g.qllm_history_opts = vim.tbl_extend("force", {
     summarize_history = "messages",
     -- "none"      -> no summarization, sliding window only

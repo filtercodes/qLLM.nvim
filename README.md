@@ -105,8 +105,8 @@ Commands are logically categorized into **Action** (direct text generation or ed
 |--------------|---- |------------------------------------|
 | init  |  none | Analyzes the local folder and subfolders to create an architectural map (`qLLM.md`) for the context orchestration. |
 | explain  |  text selection | Asks LLM to explain the selected text or code and returns the explanation in a text popup.|
-| files  |  [file paths] + prompt | Reads files content (supports wildcards) and passes it as context for the prompt. |
-| scan  |  [file paths] + "query" + prompt | Performs a fast literal search or hybrid semantic search (if initialized) across local project files and sends relevant chunks to the LLM. |
+| files  |  [file paths] and prompt | Reads files content (supports wildcards) and passes it as context for the prompt. |
+| scan  |  query -- prompt | Performs a fast literal search or hybrid semantic search (if initialized) across local project files and sends relevant chunks to the LLM. Divide query and prompt with space-double-dash-space. |
 
 ### Wiki commands
 
@@ -126,6 +126,8 @@ Commands are logically categorized into **Action** (direct text generation or ed
 | clear  |  none | Completely clears the conversation to start fresh. |
 | hlist  |  none | Shows the information about conversation history: buffer number, the number of messages (and tokens if tiktoken is installed), last model, name. |
 | hcopy  |  number and "merge" | Copy entire buffer history to another buffer. If passing merge command after buffer number, both buffers will be merged. |
+| heavy  |  "low", "medium", or "high" | Configures the heaviness level of the chat history. Dynamically changes how much context (files, selections, search results) is preserved in subsequent turns. |
+
 
 ### Other
 
@@ -324,7 +326,7 @@ qLLM manages history automatically. You can tune its behavior using the `vim.g.q
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| summarize_history | "messages" | When on, it compresses percentage of the older buffer into a summary when `max_messages` (or `max_tokens`) is reached, otherwise uses hard sliding window to drop the oldest ones. |
+| summarize_history | "messages" | Select a way to track conversation buffer when `max_messages` (or `max_tokens`) is reached; Tokens and messages summarize, and none uses hard sliding window to drop the oldest conversation pairs. |
 | summarize_model | *(Global)* | The model to use for background summarization. |
 | summarize_provider | *(Global)* | The provider to use for background summarization. |
 | max_messages | 50 | Total messages to retain before summarizing older ones. |
@@ -353,6 +355,19 @@ vim.g.qllm_history_opts = {
     time_based_expiry = false,      -- Turn off amnesia mode
 }
 ```
+
+### Variable History Heaviness
+
+To prevent the LLM context from cluttering quickly or sending stale versions of files, use the **Variable History Heaviness**. You can dynamically control the amount of context (such as resolved file contents, visual selections, and search results) from the commands that is carried forward into subsequent conversation turns.
+
+Default, heaviness setting is `"low"`. It can be set globally via `vim.g.qllm_history_heaviness`, and there is also a command to change it dynamically when required using the `:Chat heavy low|medium|high`.
+
+#### Heaviness levels:
+- **`low` (Default)**: Only the clean query prompt/instruction (e.g., `"FILES: explain this in [history.lua]"`) is recorded in the conversation history. Visual selection code, Tavily search results, and raw file contents are discarded on subsequent turns. This is token-efficient and prevents the LLM from referencing stale, outdated code versions as you modify files.
+- **`medium`**: Visual selections and search results are preserved and re-sent in history, but **full file contents are excluded**. This is ideal for active, selection-based coding sessions without buffer-bloat.
+- **`high`**: Everything (including raw file contents, selections, and search results) is appended to subsequent turns. This provides the LLM with complete memory at the cost of higher token consumption and potential confusion if file contents change.
+
+The idea is that some context is preservable and static with high importance and requires high heaviness, while other context might be in the process of change or completely non-relevant for the major context of the conversation. Changing the heaviness level on demand, alows for higher granularity in context managent.
 
 #### Chat History navigation
 

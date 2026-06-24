@@ -80,7 +80,7 @@ local function call_tavily(query, cb)
     })
 end
 
-function LocalGroundingProvider.make_call(payload, user_message_text, cb, bufnr)
+function LocalGroundingProvider.make_call(payload, user_message_text, cb, bufnr, overrides)
     local Providers = require("qllm.providers")
     local provider_instance = Providers.get_provider({ provider = payload.provider or "ollama" })
     
@@ -101,6 +101,13 @@ function LocalGroundingProvider.make_call(payload, user_message_text, cb, bufnr)
         for _, result in ipairs(tavily_json.results or {}) do
             context_text = context_text .. "- " .. result.content .. "\n"
             table.insert(sources, string.format("- %s (%s)", result.title, result.url))
+        end
+
+        if overrides then
+            if not overrides.history_metadata then
+                overrides.history_metadata = {}
+            end
+            overrides.history_metadata.search_results = context_text
         end
 
         -- Construct LLM Prompt

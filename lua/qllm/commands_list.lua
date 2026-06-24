@@ -205,7 +205,7 @@ function CommandsList.complete(ArgLead, CmdLine, CursorPos)
 
     -- If we are still typing the first argument (sub-command)
     if #parts == 1 or (#parts == 2 and not ends_with_space) then
-        local cmd = {}
+        local cmd = { "heavy", "hcopy", "hlist", "undo", "wiki_index", "wiki_lint", "wiki_save", "init", "recall", "recallq", "clear", "help" }
         for k, v in pairs(vim.g.qllm_commands_defaults or {}) do
             if type(v) == "table" then
                 table.insert(cmd, k)
@@ -225,6 +225,17 @@ function CommandsList.complete(ArgLead, CmdLine, CursorPos)
     end
 
     local sub_cmd = parts[2]
+
+    -- Provide options for the heaviness command
+    if sub_cmd == "heavy" then
+        local res = {}
+        for _, level in ipairs({ "low", "medium", "high" }) do
+            if level:find("^" .. vim.pesc(ArgLead)) then
+                table.insert(res, level)
+            end
+        end
+        return res
+    end
 
     -- If the sub-command deals with files, provide native file completion
     if sub_cmd == "files" or sub_cmd == "scan" or sub_cmd == "wiki_save" then

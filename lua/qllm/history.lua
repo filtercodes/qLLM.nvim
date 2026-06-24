@@ -19,7 +19,8 @@ local is_summarizing = {}
 ---@param content string: The message content.
 ---@param model string|nil: Optional explicit model.
 ---@param command string|nil: Optional explicit command.
-function M.add_message(bufnr, role, content, model, command)
+---@param extra table|nil: Optional structured metadata for heaviness resolution.
+function M.add_message(bufnr, role, content, model, command, extra)
     if not history[bufnr] then
         history[bufnr] = {}
     end
@@ -39,12 +40,28 @@ function M.add_message(bufnr, role, content, model, command)
         content = Utils.strip_thinking_tags(content)
     end
 
+    -- Filter extra metadata based on active heaviness level at the time of message insertion
+    if role == "user" and extra then
+        local heaviness = vim.g.qllm_history_heaviness or "low"
+        local filtered_extra = {}
+        if heaviness == "high" then
+            filtered_extra.files = extra.files
+            filtered_extra.search_results = extra.search_results
+            filtered_extra.selection = extra.selection
+        elseif heaviness == "medium" then
+            filtered_extra.search_results = extra.search_results
+            filtered_extra.selection = extra.selection
+        end
+        extra = filtered_extra
+    end
+
     local message = {
         role = role,
         content = content,
         timestamp = os.time(),
         model = model,
         command = command,
+        extra = extra,
     }
     table.insert(history[bufnr], message)
 
@@ -136,14 +153,28 @@ function M.get_messages(bufnr)
         if expired_count > 0 and #valid_history == 0 then
              -- vim.notify("qLLM chat history cleared due to inactivity.", vim.log.levels.INFO, { title = "qLLM" })
              return {}
-        end
+         end
     end
 
     -- Return messages in API format
     local messages_to_send = {}
     for _, msg in ipairs(bufnr_history) do
+        local content = msg.content
+        if msg.role == "user" and msg.extra then
+            if msg.extra.files and #msg.extra.files > 0 then
+                -- Lazy require to avoid circular dependency
+                local ContextEngine = require("qllm.context_engine")
+                content = content .. "\n" .. ContextEngine.format_files_as_context(msg.extra.files)
+            end
+            if msg.extra.search_results and msg.extra.search_results ~= "" then
+                content = content .. "\n" .. msg.extra.search_results
+            end
+            if msg.extra.selection and msg.extra.selection ~= "" then
+                content = content .. "\n[USER SELECTION]\n" .. msg.extra.selection
+            end
+        end
         -- We only need role and content for the API
-        table.insert(messages_to_send, { role = msg.role, content = msg.content })
+        table.insert(messages_to_send, { role = msg.role, content = content })
     end
 
     return messages_to_send
@@ -154,8 +185,8 @@ end
 ---@param bufnr number
 ---@return number|nil token_count, string|nil err
 function M.get_history_token_count(bufnr)
-    local msgs = history[bufnr]
-    if not msgs or #msgs == 0 then
+    local msgs = M.get_messages(bufnr)
+    if #msgs == 0 then
         return 0, nil
     end
 
@@ -204,7 +235,21 @@ function M.get_last_response(bufnr, offset)
                 local question = nil
                 -- The question is the message immediately preceding the answer
                 if i > 1 and buf_history[i-1].role == "user" then
-                    question = buf_history[i-1].content
+                    local user_msg = buf_history[i-1]
+                    local content = user_msg.content
+                    if user_msg.extra then
+                        if user_msg.extra.files and #user_msg.extra.files > 0 then
+                            local ContextEngine = require("qllm.context_engine")
+                            content = content .. "\n" .. ContextEngine.format_files_as_context(user_msg.extra.files)
+                        end
+                        if user_msg.extra.search_results and user_msg.extra.search_results ~= "" then
+                            content = content .. "\n" .. user_msg.extra.search_results
+                        end
+                        if user_msg.extra.selection and user_msg.extra.selection ~= "" then
+                            content = content .. "\n[USER SELECTION]\n" .. user_msg.extra.selection
+                        end
+                    end
+                    question = content
                 end
                 return msg.content, msg.model, msg.command, msg.cursor_pos, question
             end
