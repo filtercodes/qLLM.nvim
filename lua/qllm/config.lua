@@ -19,7 +19,7 @@ vim.g.qllm_provider_defaults = vim.tbl_extend("force", {
     },
     anthropic = {
         model = "claude-haiku-4-5-20251001",
-        max_tokens = 4096,
+        output_tokens = 4096,
     },
     gemini = {
         model = "gemini-2.5-flash",
@@ -111,7 +111,7 @@ vim.g.qllm_history_opts = vim.tbl_extend("force", {
     -- "messages"  -> summarize when message count exceeds max_messages
     -- "tokens"    -> summarize when token count exceeds max_tokens
     max_messages = 60,
-    max_tokens = 8000,
+    max_tokens = 24000,
     summarize_percent = 50,
     time_based_expiry = false,
     timeout = 1800, -- 30 minutes
@@ -132,10 +132,10 @@ local kb_defaults = {
     model = vim.g.qllm_kb_embedding_model or "nomic-embed-text",
     dimension = vim.g.qllm_kb_embedding_dimension or 768,
 
-    -- 4. PROJECT CONTEXT
-    project_provider = (vim.g.qllm_project_defaults and vim.g.qllm_project_defaults.provider) 
+    -- 4. CONTEXT GENERATION
+    context_provider = (vim.g.qllm_project_defaults and vim.g.qllm_project_defaults.provider) 
         or vim.g.qllm_api_provider or "ollama",
-    project_model = (vim.g.qllm_project_defaults and vim.g.qllm_project_defaults.model) or nil, -- nil means use provider default
+    context_model = (vim.g.qllm_project_defaults and vim.g.qllm_project_defaults.model) or nil, -- nil means use provider default
     auto_init = true,
     auto_check_freshness = true,
 

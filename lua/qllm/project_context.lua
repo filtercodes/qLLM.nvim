@@ -34,6 +34,8 @@ function M.generate_project_skeleton(root)
     return vim.fn.sha256(table.concat(structure, "\n")), count
 end
 
+local CodeExtraction = require("qllm.code_extraction")
+
 local is_indexing = false
 local last_progress_time = 0
 
@@ -72,22 +74,22 @@ Include:
 2. Core Hubs: Key files/directories and their functional roles.
 
 PROJECT STRUCTURE:
-%%s
+%s
 
 README CONTENT:
-%%s
+%s
 
 IMPORTANT: Output your response in Markdown format. Start with a metadata block in HTML comments:
 <!-- METADATA: {"hash": "PENDING", "count": 0} -->
 ]], dir_listing, readme_content)
 
-    local provider_name = kb_opts.project_provider or "ollama"
+    local provider_name = kb_opts.context_provider or kb_opts.project_provider or "ollama"
 
     local Providers = require("qllm.providers")
     local provider = Providers.get_provider({ provider = provider_name })
 
     -- If model is nil, fetch the provider's default
-    local model_name = kb_opts.project_model
+    local model_name = kb_opts.context_model or kb_opts.project_model
     if not model_name then
         local CommandsList = require("qllm.commands_list")
         local provider_opts = CommandsList.get_cmd_opts("chat", { provider = provider_name })
@@ -105,7 +107,7 @@ IMPORTANT: Output your response in Markdown format. Start with a metadata block 
         local hash, count = M.generate_project_skeleton(root)
         
         -- Replace pending metadata with actual values
-        local metadata_str = string.format('{"hash": "%%s", "count": %%d}', hash, count)
+        local metadata_str = string.format('{"hash": "%s", "count": %d}', hash, count)
         local final_content = response:gsub('{"hash": "PENDING", "count": 0}', metadata_str)
         
         local output_path = root .. "qLLM.md"
@@ -114,6 +116,7 @@ IMPORTANT: Output your response in Markdown format. Start with a metadata block 
             f:write(final_content)
             f:close()
             vim.notify("Project Context initialized: " .. output_path, vim.log.levels.INFO)
+            CodeExtraction.build_and_save_call_graph(root)
         else
             vim.notify("Error: Could not write to " .. output_path, vim.log.levels.ERROR)
         end
@@ -196,6 +199,42 @@ function M.check_freshness()
     local status = M.get_freshness_status()
     if status == "significant_change" then
         vim.notify("[qLLM] Project map is stale. Run :Chat init to update.", vim.log.levels.WARN)
+    end
+end
+
+---Builds the project AST call graph and saves it as qLLM_map.json.
+---Delegates to CodeExtraction for implementation details.
+---@param root string
+function M.build_and_save_call_graph(root)
+    CodeExtraction.build_and_save_call_graph(root)
+end
+
+---Displays the call graph or variable reference tree structure in a popup.
+---@param query string The function or variable name to query.
+---@param bufnr number The buffer number to associate with the popup.
+function M.show_tree(query, bufnr)
+    local root = M.get_project_root()
+    local output_lines, err = CodeExtraction.query_call_tree(query, root)
+    if err then
+        vim.notify(err, vim.log.levels.WARN)
+        return
+    end
+
+    -- Tag buffer metadata to identify it as a tree popup
+    vim.b[bufnr].qllm_metadata = {
+        command = "tree"
+    }
+
+    -- Render popup UI
+    local Ui = require("qllm.ui")
+    Ui.popup(output_lines, "markdown", bufnr)
+
+    -- Save to history based on heaviness
+    local heaviness = vim.g.qllm_history_heaviness or "low"
+    if heaviness == "medium" or heaviness == "high" then
+        local History = require("qllm.history")
+        History.add_message(bufnr, "user", "tree " .. query)
+        History.add_message(bufnr, "assistant", table.concat(output_lines, "\n"), nil, "tree")
     end
 end
 

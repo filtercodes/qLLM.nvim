@@ -7,6 +7,10 @@
 ehthumbs.db
 Thumbs.db
 
+# qllm files
+qLLM_map.json
+qLLM.md
+
 # Compiled Lua sources
 luac.out
 

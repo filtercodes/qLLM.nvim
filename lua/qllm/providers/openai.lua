@@ -45,6 +45,10 @@ function OpenAIProvider.make_request(command, cmd_opts, command_args, text_selec
         command = command, -- Store for logging, will be deleted before API call
     }
 
+    if cmd_opts.output_tokens then
+        request.max_tokens = cmd_opts.output_tokens
+    end
+
     -- 1. Route to correct API structure
     if use_responses_api then
         request.input = messages_for_api

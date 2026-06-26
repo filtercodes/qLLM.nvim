@@ -144,19 +144,24 @@ DOCUMENT:
 %s
 ]], schema_content, content)
 
-    local kb_provider = kb_opts.provider or "ollama"
-    local kb_model = kb_opts.model or "nomic-embed-text"
+    local lib_provider = kb_opts.context_provider or kb_opts.project_provider or vim.g.qllm_api_provider or "ollama"
+    local lib_model = kb_opts.context_model or kb_opts.project_model
 
-    local overrides = { provider = kb_provider, model = kb_model }
     local Providers = require("qllm.providers")
     local CommandsList = require("qllm.commands_list")
+    local cmd_opts = CommandsList.get_cmd_opts("chat", { provider = lib_provider })
+
+    if not lib_model then
+        lib_model = cmd_opts.model
+    end
+
+    local overrides = { provider = lib_provider, model = lib_model }
     local provider = Providers.get_provider(overrides)
-    local cmd_opts = CommandsList.get_cmd_opts("chat", overrides)
     
     cmd_opts.extra_params = vim.tbl_extend("force", cmd_opts.extra_params or {}, { format = "json" })
 
     provider.make_call({
-        model = kb_model,
+        model = lib_model,
         messages = {{role = "user", content = prompt}},
         stream = false,
         format = "json"

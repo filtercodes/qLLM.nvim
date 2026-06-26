@@ -61,8 +61,8 @@ function GeminiProvider.make_request(command, cmd_opts, command_args, text_selec
         has_config = true
     end
 
-    if cmd_opts.max_tokens then
-        gen_config.maxOutputTokens = cmd_opts.max_tokens
+    if cmd_opts.output_tokens then
+        gen_config.maxOutputTokens = cmd_opts.output_tokens
         has_config = true
     end
 

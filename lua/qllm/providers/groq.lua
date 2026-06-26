@@ -28,7 +28,7 @@ function GroqProvider.make_request(command, cmd_opts, command_args, text_selecti
         n = cmd_opts.number_of_choices,
         model = cmd_opts.model,
         messages = messages_for_api,
-        max_tokens = cmd_opts.max_tokens,
+        max_tokens = cmd_opts.output_tokens,
     }
 
     return request, new_user_message_text

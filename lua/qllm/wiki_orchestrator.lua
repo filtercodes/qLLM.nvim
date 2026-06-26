@@ -76,9 +76,9 @@ function M.weave_neighborhood(source_path, source_content, source_summary)
     local SafeWriter = require("qllm.wiki_safe_writer")
     local kb_opts = vim.g.qllm_kb_opts
     
-    local kb_provider = kb_opts.provider or "ollama"
-    local kb_model = kb_opts.model or "nomic-embed-text"
-    local strategy = M.get_update_strategy(kb_provider)
+    local lib_provider = kb_opts.context_provider or kb_opts.project_provider or vim.g.qllm_api_provider or "ollama"
+    local lib_model = kb_opts.context_model or kb_opts.project_model
+    local strategy = M.get_update_strategy(lib_provider)
     
     -- Weave only if we have vector search enabled
     local vec_path = kb_opts.sqlite_vec_path
@@ -123,9 +123,13 @@ function M.weave_neighborhood(source_path, source_content, source_summary)
         local Providers = require("qllm.providers")
         local CommandsList = require("qllm.commands_list")
         
-        local overrides = { provider = kb_provider, model = kb_model }
+        local cmd_opts = CommandsList.get_cmd_opts("chat", { provider = lib_provider })
+        if not lib_model then
+            lib_model = cmd_opts.model
+        end
+
+        local overrides = { provider = lib_provider, model = lib_model }
         local provider = Providers.get_provider(overrides)
-        local cmd_opts = CommandsList.get_cmd_opts("chat", overrides)
         cmd_opts.extra_params = vim.tbl_extend("force", cmd_opts.extra_params or {}, { format = "json" })
 
         local prompt = ""
@@ -136,7 +140,7 @@ function M.weave_neighborhood(source_path, source_content, source_summary)
                 neighbors_ctx = neighbors_ctx .. string.format("\nFILE: %s\nSUMMARY: %s\n---\n", n.filepath, n.summary)
             end
             
-            prompt = string.format([[
+            prompt = string.format([=[
 You are the Active Librarian. A new document has been added to the knowledge base.
 Your job is to identify how this new document affects its semantic neighbors.
 For each neighbor, generate a surgical update (a "ripple").
@@ -161,10 +165,10 @@ You MUST output a strictly formatted JSON array containing the ripples:
   ]
 }
 ```
-]], vim.fn.fnamemodify(source_path, ":t"), source_summary, neighbors_ctx, vim.fn.fnamemodify(source_path, ":t"))
+]=], vim.fn.fnamemodify(source_path, ":t"), source_summary, neighbors_ctx, vim.fn.fnamemodify(source_path, ":t"))
             
             provider.make_call({
-                model = kb_model,
+                model = lib_model,
                 messages = {{role = "user", content = prompt}},
                 stream = false,
                 format = "json"
@@ -209,7 +213,7 @@ Output strictly JSON:
 ]], vim.fn.fnamemodify(source_path, ":t"), source_summary, vim.fn.fnamemodify(n.filepath, ":t"), n.summary, n.filepath)
             
             provider.make_call({
-                model = kb_model,
+                model = lib_model,
                 messages = {{role = "user", content = prompt}},
                 stream = false,
                 format = "json"

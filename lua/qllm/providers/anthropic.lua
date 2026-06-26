@@ -30,12 +30,12 @@ function AnthropicProvider.make_request(command, cmd_opts, command_args, text_se
     table.insert(messages_for_api, {role="user", content=new_user_message_text})
 
     local model = cmd_opts.model
-    local max_tokens = cmd_opts.max_tokens or 4096
+    local output_tokens = cmd_opts.output_tokens or 4096
 
     -- Default request
     local request = {
         model = model,
-        max_tokens = max_tokens,
+        max_tokens = output_tokens,
         system = system_message,
         messages = messages_for_api,
         stream = true,
@@ -58,10 +58,10 @@ function AnthropicProvider.make_request(command, cmd_opts, command_args, text_se
 
         -- Enable thinking for Sonnet if requested or searching
         if is_sonnet then
-            local budget = math.floor((tonumber(max_tokens) or 4096) * 0.5)
+            local budget = math.floor((tonumber(output_tokens) or 4096) * 0.5)
             if budget < 1024 then budget = 1024 end
             -- Ensure max_tokens is higher than budget
-            if tonumber(max_tokens) < budget + 512 then
+            if tonumber(output_tokens) < budget + 512 then
                 request.max_tokens = budget + 512
             end
             request.thinking = { type = "enabled", budget_tokens = budget }

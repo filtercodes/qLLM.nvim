@@ -175,7 +175,81 @@ function Ui.create_window(filetype, bufnr, start_row, start_col, end_row, end_co
 end
 
 function Ui.window_mapping(ui_elem)
-    -- Mappings
+    ui_elem:map("n", "<CR>", function()
+        local line = vim.api.nvim_get_current_line()
+        local target_path = nil
+        local target_line = 1
+
+        -- 1. Try markdown file link: file:///path/to/file#L123
+        local path_md, line_md = line:match("file:///(.-)#L(%d+)")
+        if path_md then
+            if path_md:sub(1, 1) ~= "/" then
+                path_md = "/" .. path_md
+            end
+            target_path = path_md
+            target_line = tonumber(line_md) or 1
+        else
+            -- Try markdown file link without line number: file:///path/to/file
+            local path_md_no_line = line:match("file:///(%S+)")
+            if path_md_no_line then
+                if path_md_no_line:sub(1, 1) ~= "/" then
+                    path_md_no_line = "/" .. path_md_no_line
+                end
+                target_path = path_md_no_line
+                target_line = 1
+            end
+        end
+
+        -- 2. Try reference and call tree patterns (only if this popup belongs to the "tree" command)
+        local metadata = vim.b[ui_elem.bufnr].qllm_metadata
+        local is_tree_cmd = metadata and metadata.command == "tree"
+
+        if is_tree_cmd then
+            -- Try reference format with line number: [Name] (path:L123)
+            if not target_path then
+                local func_name, path, line_num = line:match("%[%s*([%w_.:]+)%s*%]%s*%(%s*([^:%)]+):L(%d+)")
+                if func_name and path and line_num then
+                    local root = require("qllm.project_context").get_project_root()
+                    target_path = root .. path
+                    target_line = tonumber(line_num) or 1
+                end
+            end
+
+            -- Try standard call tree format: [Name] (path)
+            if not target_path then
+                local func_name, path = line:match("%[%s*([%w_.:]+)%s*%]%s*%(%s*([^:%)]+)%s*%)")
+                if func_name and path then
+                    local root = require("qllm.project_context").get_project_root()
+                    target_path = root .. path
+                    target_line = 1
+
+                    -- Look up function start line in call graph if available
+                    local map_path = root .. "qLLM_map.json"
+                    if vim.fn.filereadable(map_path) == 1 then
+                        local json_content = table.concat(vim.fn.readfile(map_path), "\n")
+                        local ok, map_data = pcall(vim.json.decode, json_content)
+                        if ok and map_data then
+                            for _, f in ipairs(map_data) do
+                                if f.name == func_name and f.file == path then
+                                    target_line = f.start_line or 1
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        if target_path and vim.fn.filereadable(target_path) == 1 then
+            ui_elem:unmount()
+            vim.schedule(function()
+                vim.cmd("edit " .. vim.fn.fnameescape(target_path))
+                pcall(vim.api.nvim_win_set_cursor, 0, { target_line, 0 })
+            end)
+        end
+    end, { noremap = true, silent = true })
+
     ui_elem:map("n", vim.g.qllm_ui_commands.quit, function()
         ui_elem:unmount()
     end, { noremap = true, silent = true })

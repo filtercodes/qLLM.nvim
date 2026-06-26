@@ -327,6 +327,18 @@ function qllmModule.run_cmd(opts)
         return
     end
 
+    -- Handle `tree` as a special case
+    if command == "tree" then
+        local query = opts.fargs[2] or ""
+        if query == "" then
+            vim.notify("Usage: :Chat tree <function_or_variable>", vim.log.levels.ERROR)
+            return
+        end
+        local ProjectContext = require("qllm.project_context")
+        ProjectContext.show_tree(query, bufnr)
+        return
+    end
+
     -- 2. RESOLVE PROVIDER & PRESETS
     local overrides = nil
     -- Command-to-Provider Mapping

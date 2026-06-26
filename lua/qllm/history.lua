@@ -21,6 +21,11 @@ local is_summarizing = {}
 ---@param command string|nil: Optional explicit command.
 ---@param extra table|nil: Optional structured metadata for heaviness resolution.
 function M.add_message(bufnr, role, content, model, command, extra)
+    -- Guard against invalid buffer IDs (like -1 used for global/background context)
+    if not bufnr or bufnr <= 0 or not vim.api.nvim_buf_is_valid(bufnr) then
+        return
+    end
+
     if not history[bufnr] then
         history[bufnr] = {}
     end

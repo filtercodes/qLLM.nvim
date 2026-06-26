@@ -1,6 +1,6 @@
 # qLLM.nvim
 
-qLLM provides a convenient way to access LLMs directly within the Neovim editor. Running a command followed by a prompt opens the response in a popup window. The plugin is highly configurable and includes advanced context and knowledge management tools, as well as coding focused commands.
+qLLM (queue LLM) provides a way to interact with LLMs from within the Neovim editor. Running a command followed by a prompt opens the response in a popup window. The plugin is highly configurable and includes advanced context and knowledge management tools, as well as coding focused commands.
 
 No Agentic Overhead - qLLM follows the philosophy: "developer is the agent orchestrator". This allows for a streamlined workflow with mid-size or large local language models and gives control back to the developer who may find themselves stuck in an agentic loop.
 
@@ -12,7 +12,8 @@ Focus is on context management, knowledge extraction and using direct commands t
 |-------------|-------------|
 | Neovim >= 0.12.0 | Native support. |
 | Neovim 0.10.x - 0.11.x | Requires manual installation of [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter) (with `markdown` and `markdown_inline` parsers). |
-| External (Wiki only) | `sqlite3` CLI and the `sqlite-vec` shared library (see [setup guide](#vector-search-setup-sqlite-vec)). |
+| External (Code Map) | [tokei](https://github.com/XAMPPRocky/tokei) CLI binary (required for project mapping). <br> • **macOS**: `brew install tokei` <br> • **Linux**: `cargo install tokei` (or package manager) <br> • **Windows**: `scoop install tokei` (or cargo) |
+| External (Wiki) | `sqlite3` CLI and the `sqlite-vec` shared library (see [setup guide](#vector-search-setup-sqlite-vec)). |
 | Dependencies | [plenary.nvim](https://github.com/nvim-lua/plenary.nvim) and [nui.nvim](https://github.com/MunifTanjim/nui.nvim). |
 
 Optionally install tiktoken: `python3 -m pip install tiktoken` - for token tracking support.
@@ -107,6 +108,7 @@ Commands are logically categorized into **Action** (direct text generation or ed
 | explain  |  text selection | Asks LLM to explain the selected text or code and returns the explanation in a text popup.|
 | files  |  [file paths] and prompt | Reads files content (supports wildcards) and passes it as context for the prompt. |
 | scan  |  query -- prompt | Performs a fast literal search or hybrid semantic search (if initialized) across local project files and sends relevant chunks to the LLM. Divide query and prompt with space-double-dash-space. |
+| tree  |  symbol name | Queries the project call graph or reference map for the symbol, displaying its callers (upward) and callees (downward) in a text popup. |
 
 ### Wiki commands
 
@@ -169,7 +171,7 @@ vim.g.qllm_commands_defaults = {
 
 | Name | Value | Description |
 |------|---------|-------------|
-| max_tokens | 16384 | The maximum number of tokens to use including the prompt tokens. |
+| output_tokens | `nil` | The output limit of response tokens the model is allowed to generate. |
 | user_message_template | "" | The primary prompt template. |
 | callback_type | "text_popup" | Controls UI behavior (`replace_lines` or `text_popup`). |
 | allow_empty_text_selection | true | If false, command doesn't run without a visual selection. |
@@ -240,8 +242,9 @@ These are commands to inject arbitrary local project context or search results i
 
 *   `:Chat files [file1.py file2.js *.md] prompt`: Reads multiple local files (supports wildcards and escaped quotes) and passes their content as the context for the prompt.
     *   Note: If no prompt is provided, it defaults to the `explain` command for all files.
-*   `:Chat scan [src/*.lua] "query" prompt`: Performs a fast literal search or a hybrid semantic search (if `:Chat init` was run) across local project files for the `"query"` and sends the relevant chunks to the LLM for analysis.
+*   `:Chat scan [src/*.lua] query -- prompt`: Performs a fast literal search or a hybrid semantic search (if `:Chat init` was run) across local project files for the `"query"` and sends the relevant chunks to the LLM for analysis.
     *   Note: If no prompt is provided, it displays the search results in a popup without calling the LLM. The result goes to the chat history so the next LLM inference can see it.
+*   `:Chat tree <function_or_variable>`: Queries the call graph or reference map for the specified function or variable. It parses the indexed map and walks symbol connections to trace upward callers and downward callees recursively.
 
 ### The "Librarian" architecture
 When running in `complex` mode, qLLM employs a dual-layer retrieval strategy:
@@ -280,9 +283,9 @@ vim.g.qllm_kb_opts = {
     model = "nomic-embed-text",  -- The specific embedding model
     dimension = 768,             -- Vector size (768 for nomic, 1536 for openai)
 
-    -- PROJECT CONTEXT
-    project_provider = "ollama", -- Provider for local project mapping
-    project_model = "qwen3:8b",  -- Model used for :Chat init
+    -- CONTEXT GENERATION (Wiki & Project)
+    context_provider = "ollama", -- Provider for local project mapping and Wiki metadata
+    context_model = "gemma4",    -- Model used for indexing and context generation
     auto_init = true,            -- Auto-sync if qLLM.md is present and stale
     auto_check_freshness = true, -- Check for structural changes on every scan/files command
 
@@ -329,9 +332,9 @@ qLLM manages history automatically. You can tune its behavior using the `vim.g.q
 | summarize_history | "messages" | Select a way to track conversation buffer when `max_messages` (or `max_tokens`) is reached; Tokens and messages summarize, and none uses hard sliding window to drop the oldest conversation pairs. |
 | summarize_model | *(Global)* | The model to use for background summarization. |
 | summarize_provider | *(Global)* | The provider to use for background summarization. |
-| max_messages | 50 | Total messages to retain before summarizing older ones. |
 | summarize_percent | 50 | What percentage of messages will be summarized. Default is 50% - half. |
-| max_tokens | 80000 | Number of tokens to reach for summarization logic to trigger. |
+| max_messages | 50 | Total messages to retain before summarizing older ones. |
+| max_tokens | 24000 | Number of tokens to reach for summarization logic to trigger. |
 | time_based_expiry | false | If `true`, history automatically clears after the `timeout`. |
 | timeout | 1800 | Inactivity window (in seconds) before history expires (if `time_based_expiry` set to `true`). |
 
@@ -365,7 +368,7 @@ Default, heaviness setting is `"low"`. It can be set globally via `vim.g.qllm_hi
 #### Heaviness levels:
 - **`low` (Default)**: Only the clean query prompt/instruction (e.g., `"FILES: explain this in [history.lua]"`) is recorded in the conversation history. Visual selection code, Tavily search results, and raw file contents are discarded on subsequent turns. This is token-efficient and prevents the LLM from referencing stale, outdated code versions as you modify files.
 - **`medium`**: Visual selections and search results are preserved and re-sent in history, but **full file contents are excluded**. This is ideal for active, selection-based coding sessions without buffer-bloat.
-- **`high`**: Everything (including raw file contents, selections, and search results) is appended to subsequent turns. This provides the LLM with complete memory at the cost of higher token consumption and potential confusion if file contents change.
+- **`high`**: Everything (including raw file contents, selections, and search results) is appended to subsequent turns. This provides the LLM with complete memory of the input, at the cost of higher token consumption and potential confusion if file contents change.
 
 The idea is that some context is preservable and static with high importance and requires high heaviness, while other context might be in the process of change or completely non-relevant for the major context of the conversation. Changing the heaviness level on demand, alows for higher granularity in context managent.
 
