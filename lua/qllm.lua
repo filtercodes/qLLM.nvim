@@ -434,4 +434,10 @@ function qllmModule.adjust_popup_size(delta_w, delta_h)
     return Ui.refresh_active_popup()
 end
 
+function qllmModule.adjust_popup_position(delta_col, delta_row)
+    local Window = require("qllm.window")
+    Window.move_global_layout(delta_col, delta_row)
+    return Ui.refresh_active_popup()
+end
+
 return qllmModule

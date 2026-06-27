@@ -86,7 +86,7 @@ vim.g.qllm_popup_type = "popup"
 -- Whether to show the thinking process in the UI (if supported by the provider)
 vim.g.qllm_show_thinking = true
 
--- Set the layout of the popup window
+-- Set the layout of the popup window (position can be "50%" or a table, e.g. { row = "10%", col = "90%" })
 vim.g.qllm_popup_layout = {
   relative = "editor",
   position = "50%",

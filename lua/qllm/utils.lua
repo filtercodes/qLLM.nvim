@@ -294,7 +294,9 @@ end
 ---@return string The key sequence to execute.
 function Utils.handle_cmdline_enter()
     local cmdline = vim.fn.getcmdline()
-    local cmd, sub = cmdline:match("^(%S+)%s+(%S+)")
+    -- Strip optional Vim range prefix (e.g. '<,'> or % or 12,34) to get the command name
+    local clean_cmdline = cmdline:gsub("^['<,>%%d%%%%%$.%+%-%s;]*", "")
+    local cmd, sub = clean_cmdline:match("^(%S+)%s+(%S+)")
 
     local qllm_cmds = { Chat=1, Gemini=1, Claude=1, Openai=1, Ollama=1, Groq=1 }
     local is_qllm = cmd and (qllm_cmds[cmd] or cmd:match("^Chat%d$"))

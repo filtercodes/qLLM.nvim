@@ -429,12 +429,9 @@ The default filetype of the text popup window is markdown. This can be changed b
 vim.g.qllm_text_popup_filetype = "markdown"
 ```
 
-To make the internal code examples have syntax highlighting add your preferred languages to `init.vim`:
+To make the internal code examples have syntax highlighting add your preferred languages to treesitter:
 ```vim
-" Define the languages
-let g:markdown_fenced_languages = ['python', 'javascript', 'lua', 'cpp']
-" Disable built-in Tree-sitter parser for Markdown
-autocmd FileType markdown lua vim.treesitter.stop()
+require('nvim-treesitter').install { 'markdown', 'markdown_inline', 'python', 'javascript', 'lua' }
 ```
 
 When using reasoning models, `qllm_show_thinking` configures popup to either display the thinking context or just show the label "Thinking..." instead.
@@ -464,27 +461,38 @@ vim.g.qllm_ui_commands = {
 vim.g.qllm_popup_layout = {
   -- a table as defined by nui.nvim https://github.com/MunifTanjim/nui.nvim/tree/main/lua/nui/popup#popupupdate_layout
   relative = "editor",
-  position = "50%",
+  -- Can be a string/number (e.g. "50%") or a table defining both axes:
+  position = {
+    row = "10%",
+    col = "90%"
+  },
   size = {
-    width = "80%",
+    width = "40%",
     height = "80%"
   }
 }
 ```
 
-### Dynamic popup resizing
+### Dynamic popup resizing and movement
 
-Set custom keymaps to dynamically setup max size setting for the session. This is useful for expanding the window when reading long code blocks, or shrinking it to better see the buffer behind it.
+Set custom keymaps to dynamically adjust the maximum size and position settings for the session. This is useful for expanding the window when reading long code blocks.
 
-The following example maps `<leader>q` + Arrow Keys to increase/decrease the dimensions by 10% increments. The values that were set this way will become default for the duration of this session.
+The following example maps `<leader>q` + Arrow Keys to resize the dimensions by 10% increments, and `<leader>q` + `hjkl` keys to shift the position by 5% increments. The values set this way persist for the duration of the session.
 
 ```lua
--- Increase/Decrease popup dimensions on the fly
 local qllm = require("qllm")
+
+-- Increase/Decrease popup dimensions on the fly
 vim.keymap.set("n", "<leader>q<Up>",    function() qllm.adjust_popup_size(0, 10)   end)
 vim.keymap.set("n", "<leader>q<Down>",  function() qllm.adjust_popup_size(0, -10)  end)
 vim.keymap.set("n", "<leader>q<Left>",  function() qllm.adjust_popup_size(10, 0)   end)
 vim.keymap.set("n", "<leader>q<Right>", function() qllm.adjust_popup_size(-10, 0)  end)
+
+-- Shift popup position by using hjkl keys
+vim.keymap.set("n", "<leader>qh",       function() qllm.adjust_popup_position(-5, 0) end)
+vim.keymap.set("n", "<leader>qj",       function() qllm.adjust_popup_position(0, 5)  end)
+vim.keymap.set("n", "<leader>qk",       function() qllm.adjust_popup_position(0, -5) end)
+vim.keymap.set("n", "<leader>ql",       function() qllm.adjust_popup_position(5, 0)  end)
 ```
 
 ### Popup border style

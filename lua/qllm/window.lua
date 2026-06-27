@@ -78,11 +78,25 @@ function Window.create_popup(is_full_height)
     local max_width = parse_dim(width_raw, columns)
     local max_height = parse_dim(height_raw, usable_h)
 
-    local pos_val = parse_dim(options.position or "50%", usable_h)
+    local pos_row = "50%"
+    local pos_col = "50%"
+    if type(options.position) == "table" then
+        pos_row = options.position.row or "50%"
+        pos_col = options.position.col or "50%"
+    elseif options.position then
+        pos_row = options.position
+    end
+
+    local pos_row_val = parse_dim(pos_row, usable_h)
+    local pos_col_val = parse_dim(pos_col, columns)
 
     -- Calculate centered position within usable area for the MAX height
-    local max_row = math.floor(pos_val - (max_height / 2)) + tabline_h
-    local col = math.floor((columns - max_width) / 2)
+    local max_row = math.floor(pos_row_val - (max_height / 2)) + tabline_h
+    local col = math.floor(pos_col_val - (max_width / 2))
+
+    -- Clamp coordinates to keep the popup fully on-screen
+    max_row = math.max(tabline_h, math.min(max_row, tabline_h + usable_h - max_height))
+    col = math.max(0, math.min(col, columns - max_width))
 
     -- Calculate initial row for 1-line height to start centered
     local midpoint = max_row + (max_height / 2)
@@ -195,8 +209,24 @@ function Window.get_layout_constraints()
 
     local max_w = parse_dim(options.size and options.size.width or "80%", columns)
     local max_h = parse_dim(options.size and options.size.height or "60%", usable_h)
-    local max_row = math.floor((usable_h - max_h) / 2) + tabline_h
-    local col = math.floor((columns - max_w) / 2)
+    local pos_row = "50%"
+    local pos_col = "50%"
+    if type(options.position) == "table" then
+        pos_row = options.position.row or "50%"
+        pos_col = options.position.col or "50%"
+    elseif options.position then
+        pos_row = options.position
+    end
+
+    local pos_row_val = parse_dim(pos_row, usable_h)
+    local pos_col_val = parse_dim(pos_col, columns)
+
+    local max_row = math.floor(pos_row_val - (max_h / 2)) + tabline_h
+    local col = math.floor(pos_col_val - (max_w / 2))
+
+    -- Clamp coordinates to keep the popup fully on-screen
+    max_row = math.max(tabline_h, math.min(max_row, tabline_h + usable_h - max_h))
+    col = math.max(0, math.min(col, columns - max_w))
 
     return max_h, max_row, max_w, col
 end
@@ -230,6 +260,46 @@ function Window.update_global_layout(delta_w, delta_h)
     vim.g.qllm_popup_layout = layout
     vim.notify(string.format("qLLM Window Size: %d%% x %d%%", new_w, new_h), vim.log.levels.INFO, { title = "qLLM" })
     return new_w, new_h
+end
+
+---Updates the global popup position configuration.
+function Window.move_global_layout(delta_col, delta_row)
+    local layout = vim.deepcopy(vim.g.qllm_popup_layout or {
+        relative = "editor",
+        position = "50%",
+        size = { width = "80%", height = "60%" }
+    })
+
+    local pos_row = "50%"
+    local pos_col = "50%"
+    if type(layout.position) == "table" then
+        pos_row = layout.position.row or "50%"
+        pos_col = layout.position.col or "50%"
+    elseif layout.position then
+        pos_row = layout.position
+    end
+
+    local function to_num(val, default)
+        if type(val) == "string" then
+            return tonumber(val:match("%d+")) or default
+        end
+        return tonumber(val) or default
+    end
+
+    local r = to_num(pos_row, 50)
+    local c = to_num(pos_col, 50)
+
+    local new_r = math.max(0, math.min(100, r + (delta_row or 0)))
+    local new_c = math.max(0, math.min(100, c + (delta_col or 0)))
+
+    layout.position = {
+        row = new_r .. "%",
+        col = new_c .. "%"
+    }
+
+    vim.g.qllm_popup_layout = layout
+    vim.notify(string.format("qLLM Window Position: %d%%, %d%%", new_c, new_r), vim.log.levels.INFO, { title = "qLLM" })
+    return new_c, new_r
 end
 
 return Window
