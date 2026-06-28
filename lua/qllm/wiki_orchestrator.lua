@@ -76,7 +76,7 @@ function M.weave_neighborhood(source_path, source_content, source_summary)
     local SafeWriter = require("qllm.wiki_safe_writer")
     local kb_opts = vim.g.qllm_kb_opts
     
-    local lib_provider = kb_opts.context_provider or kb_opts.project_provider or vim.g.qllm_api_provider or "ollama"
+    local lib_provider = kb_opts.context_provider or kb_opts.project_provider or vim.g.qllm_api_provider
     local lib_model = kb_opts.context_model or kb_opts.project_model
     local strategy = M.get_update_strategy(lib_provider)
     

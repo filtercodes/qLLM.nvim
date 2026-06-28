@@ -144,7 +144,7 @@ DOCUMENT:
 %s
 ]], schema_content, content)
 
-    local lib_provider = kb_opts.context_provider or kb_opts.project_provider or vim.g.qllm_api_provider or "ollama"
+    local lib_provider = kb_opts.context_provider or kb_opts.project_provider or vim.g.qllm_api_provider
     local lib_model = kb_opts.context_model or kb_opts.project_model
 
     local Providers = require("qllm.providers")

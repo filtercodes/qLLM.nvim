@@ -205,7 +205,7 @@ function CommandsList.complete(ArgLead, CmdLine, CursorPos)
 
     -- If we are still typing the first argument (sub-command)
     if #parts == 1 or (#parts == 2 and not ends_with_space) then
-        local cmd = { "heavy", "hcopy", "hlist", "undo", "wiki_index", "wiki_lint", "wiki_save", "init", "tree", "deadcode", "recall", "recallq", "clear", "help" }
+        local cmd = { "heavy", "hcopy", "hlist", "undo", "wiki_index", "wiki_lint", "wiki_save", "init", "tree", "deadcode", "recall", "recallq", "clear", "help", "load", "export" }
         for k, v in pairs(vim.g.qllm_commands_defaults or {}) do
             if type(v) == "table" then
                 table.insert(cmd, k)
@@ -238,7 +238,7 @@ function CommandsList.complete(ArgLead, CmdLine, CursorPos)
     end
 
     -- If the sub-command deals with files, provide native file completion
-    if sub_cmd == "files" or sub_cmd == "scan" or sub_cmd == "wiki_save" then
+    if sub_cmd == "files" or sub_cmd == "scan" or sub_cmd == "wiki_save" or sub_cmd == "load" or sub_cmd == "export" then
         local clean_lead = ArgLead
         local quote = ""
         -- Handle leading brackets to allow users to group files

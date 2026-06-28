@@ -81,7 +81,7 @@ function qllmModule.run_cmd(opts)
                 -- If showing question, ensure we don't save cursor on close
                 vim.b[bufnr].qllm_recall_index = nil
             end
-            
+
             local start_row, start_col, end_row, end_col = Utils.get_visual_selection()
             Ui.popup(Utils.parse_lines(display_text), vim.g.qllm_text_popup_filetype, bufnr, start_row, start_col, end_row, end_col, (not show_question and cursor_pos or nil))
         else
@@ -324,6 +324,107 @@ function qllmModule.run_cmd(opts)
     if command == "init" then
         local ProjectContext = require("qllm.project_context")
         ProjectContext.init_project()
+        return
+    end
+
+    -- Handle `load` as a special case
+    if command == "load" then
+        local loaded_files = {}
+        for i = 2, #opts.fargs do
+            local filepath = opts.fargs[i]
+            local expanded_path = vim.fn.expand(filepath)
+            if vim.fn.filereadable(expanded_path) == 1 then
+                local content = table.concat(vim.fn.readfile(expanded_path), "\n")
+
+                -- Check if this is a qLLM history JSON export
+                local is_history_json = false
+                if filepath:match("%.json$") then
+                    local ok, decoded = pcall(vim.fn.json_decode, content)
+                    if ok and type(decoded) == "table" and #decoded > 0 and decoded[1].role and decoded[1].content then
+                        is_history_json = true
+                        local current_history = History.get_raw_history(bufnr)
+                        local merge = current_history ~= nil and #current_history > 0
+                        local success, err = History.copy_history(decoded, bufnr, { merge = merge })
+                        if success then
+                            vim.notify(string.format("%s `%s` history into current chat.", merge and "Merged" or "Loaded", filepath), vim.log.levels.INFO, { title = "qLLM" })
+                            table.insert(loaded_files, filepath)
+                        else
+                            vim.notify("load history error: " .. tostring(err), vim.log.levels.ERROR, { title = "qLLM" })
+                        end
+                    end
+                end
+
+                if not is_history_json then
+                    local user_msg = string.format("Here is the contents of the file `%s`:\n\n```%s\n%s\n```",
+                        vim.fn.fnamemodify(expanded_path, ":t"),
+                        vim.fn.fnamemodify(expanded_path, ":e"),
+                        content
+                    )
+                    History.add_message(bufnr, "user", user_msg)
+                    History.add_message(bufnr, "assistant", string.format("Understood. I have loaded the contents of `%s` as context.", vim.fn.fnamemodify(expanded_path, ":t")))
+                    table.insert(loaded_files, filepath)
+                end
+            else
+                vim.notify("load: File not found or unreadable: " .. filepath, vim.log.levels.ERROR, { title = "qLLM" })
+            end
+        end
+
+        if #loaded_files == 0 and text_selection and text_selection ~= "" then
+            local user_msg = "Here is the loaded text selection:\n\n" .. text_selection
+            History.add_message(bufnr, "user", user_msg)
+            History.add_message(bufnr, "assistant", "Understood. I have loaded the selected text as context.")
+            vim.notify("Loaded visual selection into chat history.", vim.log.levels.INFO, { title = "qLLM" })
+            return
+        end
+
+        if #loaded_files > 0 then
+            -- Notifications are handled per-file above
+        else
+            vim.notify("Usage: :Chat load <filepath> or select text visually.", vim.log.levels.WARN, { title = "qLLM" })
+        end
+        return
+    end
+
+    -- Handle `export` as a special case
+    if command == "export" then
+        local raw_history = History.get_raw_history(bufnr)
+        if not raw_history or #raw_history == 0 then
+            vim.notify("export: No chat history to export for this buffer.", vim.log.levels.WARN, { title = "qLLM" })
+            return
+        end
+
+        -- Generate default name: qllm_<project_folder>_<date>.json
+        local folder_name = vim.fn.fnamemodify(vim.fn.getcwd(), ":t")
+        local date = os.date("%Y-%m-%d")
+        local default_name = string.format("qllm_%s_%s.json", folder_name, date)
+
+        local filepath = opts.fargs[2]
+        local target_path
+        if not filepath then
+            target_path = vim.fn.getcwd() .. "/" .. default_name
+        else
+            local expanded = vim.fn.expand(filepath)
+            if vim.fn.isdirectory(expanded) == 1 then
+                target_path = expanded:gsub("/$", "") .. "/" .. default_name
+            else
+                target_path = expanded
+            end
+        end
+
+        local success, encoded = pcall(vim.fn.json_encode, raw_history)
+        if not success or not encoded then
+            vim.notify("export: Failed to encode chat history to JSON.", vim.log.levels.ERROR, { title = "qLLM" })
+            return
+        end
+
+        local f = io.open(target_path, "w")
+        if f then
+            f:write(encoded)
+            f:close()
+            vim.notify(string.format("Exported chat history to: %s", target_path), vim.log.levels.INFO, { title = "qLLM" })
+        else
+            vim.notify("export: Failed to write file: " .. target_path, vim.log.levels.ERROR, { title = "qLLM" })
+        end
         return
     end
 

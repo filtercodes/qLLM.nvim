@@ -352,22 +352,35 @@ function M.list_history_buffers()
     return result
 end
 
----Copies the history from one buffer to another.
+---Returns the raw in-memory history table for a given buffer.
+---@param bufnr number
+---@return table|nil
+function M.get_raw_history(bufnr)
+    return history[bufnr]
+end
+
+---Copies the history from one buffer (or raw history table) to another.
 ---Merges into destination if destination already has history.
----@param src_bufnr number
+---@param src_bufnr_or_history number|table
 ---@param dst_bufnr number
 ---@param opts table|nil  { merge: bool (default false = replace) }
 ---@return boolean, string  success, error_message
-function M.copy_history(src_bufnr, dst_bufnr, opts)
+function M.copy_history(src_bufnr_or_history, dst_bufnr, opts)
     opts = opts or {}
 
-    if src_bufnr == dst_bufnr then
-        return false, "Source and destination buffers are the same."
+    local src_history
+    if type(src_bufnr_or_history) == "table" then
+        src_history = src_bufnr_or_history
+    else
+        local src_bufnr = src_bufnr_or_history
+        if src_bufnr == dst_bufnr then
+            return false, "Source and destination buffers are the same."
+        end
+        src_history = history[src_bufnr]
     end
 
-    local src_history = history[src_bufnr]
     if not src_history or #src_history == 0 then
-        return false, string.format("No history found for buffer %d.", src_bufnr)
+        return false, "No history found to copy."
     end
 
     -- Deep copy so dst mutations don't affect src

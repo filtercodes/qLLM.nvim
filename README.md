@@ -129,6 +129,8 @@ Commands are logically categorized into **Action** (direct text generation or ed
 | clear  |  none | Completely clears the conversation to start fresh. |
 | hlist  |  none | Shows the information about conversation history: buffer number, the number of messages (and tokens if tiktoken is installed), last model, name. |
 | hcopy  |  number and "merge" | Copy entire buffer history to another buffer. If passing merge command after buffer number, both buffers will be merged. |
+| load   |  filepath or selection | Load text selection or file content into the chat history. If the file is a qLLM exported JSON history, it will restore or merge it. |
+| export |  filepath or none | Export the current chat history to a JSON file. If filepath is omitted, it auto-generates a filename based on the project folder and date. |
 | heavy  |  "low", "medium", or "high" | Configures the heaviness level of the chat history. Dynamically changes how much context (files, selections, search results) is preserved in subsequent turns. |
 
 
@@ -427,6 +429,23 @@ To copy conversation history from one buffer to another use the following workfl
 ```
 
 The **alternate buffer** default (`vim.fn.bufnr('#')`) covers the most natural case — you just left the buffer you want to branch from, so number lookup is not needed at all.
+
+### Exporting and Importing Sessions
+
+You can save and restore conversation histories to share them, backup your work, or resume them later using `export` and `load`:
+
+- **Exporting**: Save the active buffer's chat history to a JSON file:
+  ```vim
+  :Chat export                 -- saves to qllm_<project>_<date>.json in the current directory
+  :Chat export my_session.json -- saves to the specified file path
+  ```
+- **Loading**: Load any file, visual selection, or exported history:
+  ```vim
+  :Chat load my_session.json   -- detects the exported history format and restores or merges it
+  :Chat load rules.md          -- treats as a normal text file and loads its contents as context
+  ```
+
+If you load a text file or visual selection, it is appended to the chat history as a user message and balanced with a mock assistant acknowledgment to maintain role alternation. If you load an exported `qllm` history JSON file, it will restore the history exactly as it was. If the active buffer already has history, the imported messages are merged/appended onto the end of the current conversation (exactly like `hcopy merge` does).
 
 ## Popup options
 

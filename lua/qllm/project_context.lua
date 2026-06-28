@@ -84,7 +84,7 @@ IMPORTANT: Output your response in Markdown format. Start with a metadata block 
 <!-- METADATA: {"hash": "PENDING", "count": 0} -->
 ]], dir_listing, readme_content)
 
-    local provider_name = kb_opts.context_provider or kb_opts.project_provider or vim.g.qllm_api_provider or "ollama"
+    local provider_name = kb_opts.context_provider or kb_opts.project_provider or vim.g.qllm_api_provider
 
     local Providers = require("qllm.providers")
     local provider = Providers.get_provider({ provider = provider_name })
