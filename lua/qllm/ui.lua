@@ -202,7 +202,7 @@ function Ui.window_mapping(ui_elem)
 
         -- 2. Try reference and call tree patterns (only if this popup belongs to the "tree" command)
         local metadata = vim.b[ui_elem.bufnr].qllm_metadata
-        local is_tree_cmd = metadata and metadata.command == "tree"
+        local is_tree_cmd = metadata and (metadata.command == "tree" or metadata.command == "deadcode")
 
         if is_tree_cmd then
             -- Try reference format with line number: [Name] (path:L123)

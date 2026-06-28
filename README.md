@@ -10,11 +10,9 @@ Focus is on context management, knowledge extraction and using direct commands t
 
 | | Requirements |
 |-------------|-------------|
-| Neovim >= 0.12.0 | Native support. |
-| Neovim 0.10.x - 0.11.x | Requires manual installation of [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter) (with `markdown` and `markdown_inline` parsers). |
+| Dependencies | [plenary.nvim](https://github.com/nvim-lua/plenary.nvim), [nui.nvim](https://github.com/MunifTanjim/nui.nvim), and [nvim-treesitter](https://github.com/neovim-treesitter/nvim-treesitter) (with parsers installed for target languages). |
 | External (Code Map) | [tokei](https://github.com/XAMPPRocky/tokei) CLI binary (required for project mapping). <br> • **macOS**: `brew install tokei` <br> • **Linux**: `cargo install tokei` (or package manager) <br> • **Windows**: `scoop install tokei` (or cargo) |
 | External (Wiki) | `sqlite3` CLI and the `sqlite-vec` shared library (see [setup guide](#vector-search-setup-sqlite-vec)). |
-| Dependencies | [plenary.nvim](https://github.com/nvim-lua/plenary.nvim) and [nui.nvim](https://github.com/MunifTanjim/nui.nvim). |
 
 Optionally install tiktoken: `python3 -m pip install tiktoken` - for token tracking support.
 
@@ -28,6 +26,7 @@ Installing with [lazy.nvim](https://github.com/folke/lazy.nvim).
    dependencies = {
       "MunifTanjim/nui.nvim",
       "nvim-lua/plenary.nvim",
+      "nvim-treesitter/nvim-treesitter", -- Required for AST parsing and code analysis
    },
    config = function()
       require("qllm.config")
@@ -46,6 +45,7 @@ Installing with [vim-plug](https://github.com/junegunn/vim-plug).
 " Install plugins
 Plug("nvim-lua/plenary.nvim")
 Plug("MunifTanjim/nui.nvim")
+Plug("neovim-treesitter/nvim-treesitter")
 Plug('filtercodes/qLLM.nvim')
 
 call plug#end()
@@ -57,7 +57,7 @@ lua << EOF
 EOF
 ```
 
-Note on Neovim 0.12 and later - to fix problems with status line duplication, enable new UI engine
+*Note on Neovim 0.12 and later - to fix problems with status line duplication, enable new UI engine
 
 ```lua
 pcall(function() require('vim._core.ui2').enable() end)
@@ -109,6 +109,7 @@ Commands are logically categorized into **Action** (direct text generation or ed
 | files  |  [file paths] and prompt | Reads files content (supports wildcards) and passes it as context for the prompt. |
 | scan  |  query -- prompt | Performs a fast literal search or hybrid semantic search (if initialized) across local project files and sends relevant chunks to the LLM. Divide query and prompt with space-double-dash-space. |
 | tree  |  symbol name | Queries the project call graph or reference map for the symbol, displaying its callers (upward) and callees (downward) in a text popup. |
+| deadcode | none | Analyzes the project call graph to find disconnected/unused functions, unfinished stubs (with TODO/FIXME tags), and unused local variables. |
 
 ### Wiki commands
 
@@ -240,11 +241,20 @@ These are commands to inject arbitrary local project context or search results i
 
 *   If you have manually initialized the project with `:Chat init`, qLLM creates an architectural map (`qLLM.md`). This map gets added to the background context of the `files`, `scan`, and `explain` commands to give an LLM better project awareness.
 
+*   `:Chat init`: Analyzes current project directory and creates a `qLLM.md` map to enable project specific context orchestration.
 *   `:Chat files [file1.py file2.js *.md] prompt`: Reads multiple local files (supports wildcards and escaped quotes) and passes their content as the context for the prompt.
     *   Note: If no prompt is provided, it defaults to the `explain` command for all files.
-*   `:Chat scan [src/*.lua] query -- prompt`: Performs a fast literal search or a hybrid semantic search (if `:Chat init` was run) across local project files for the `"query"` and sends the relevant chunks to the LLM for analysis.
+*   `:Chat scan [src/*.lua] query -- prompt`: Performs a fast literal search across local project files for the `"query"`, automatically expands matches to their containing code blocks using Tree-sitter, and sends the relevant chunks to the LLM for analysis.
     *   Note: If no prompt is provided, it displays the search results in a popup without calling the LLM. The result goes to the chat history so the next LLM inference can see it.
 *   `:Chat tree <function_or_variable>`: Queries the call graph or reference map for the specified function or variable. It parses the indexed map and walks symbol connections to trace upward callers and downward callees recursively.
+*   `:Chat deadcode`: Runs static analysis on the mapped codebase to identify unused/disconnected functions, unfinished stubs (including empty functions and those containing `TODO`/`FIXME` tags), and unused local variables. Selecting any detected item opens the file at the exact coordinate.
+    *   Note: Exported public APIs, entry points, or dynamically registered callback functions may be reported as disconnected (having 0 callers) because they are invoked externally or dynamically.
+
+For best results with code analysis, install the Tree-sitter parsers:
+```lua
+:TSInstall markdown markdown_inline lua python javascript
+```
+Otherwise the logic will fall back to the manual analysis which is flawed. This will also enable syntax highlighting inside the markdown response for the installed languages.
 
 ### The "Librarian" architecture
 When running in `complex` mode, qLLM employs a dual-layer retrieval strategy:
@@ -262,7 +272,6 @@ These commands operate on your `~/knowledge_base` folder (or another folder of y
 *   `:Chat wiki_index`: Scans the Wiki folder and performs a "one-pass" indexing. It uses a local LLM to act as a Librarian, generating summaries and schema connections while computing vectors. It includes sha256-based change detection to skip unchanged files.
 *   `:Chat wiki_save filename.md`: Saves the current buffer or visual selection directly into the Wiki and triggers a background index update for that file.
 *   `:Chat wiki_lint`: Runs the Auditor. It populates Neovim Quickfix list with "Shadow Concepts" (highly similar files with no shared tags) and "Orphan Files" (notes that are never mentioned elsewhere).
-*   `:Chat init`: (Project Scope) Analyzes current project directory and creates a `qLLM.md` map to enable project specific context orchestration.
 
 ### Configuration
 
@@ -429,7 +438,7 @@ The default filetype of the text popup window is markdown. This can be changed b
 vim.g.qllm_text_popup_filetype = "markdown"
 ```
 
-To make the internal code examples have syntax highlighting add your preferred languages to treesitter:
+To make the internal code examples have syntax highlighting and enable better code analysis, add your preferred languages to treesitter:
 ```vim
 require('nvim-treesitter').install { 'markdown', 'markdown_inline', 'python', 'javascript', 'lua' }
 ```
@@ -461,7 +470,6 @@ vim.g.qllm_ui_commands = {
 vim.g.qllm_popup_layout = {
   -- a table as defined by nui.nvim https://github.com/MunifTanjim/nui.nvim/tree/main/lua/nui/popup#popupupdate_layout
   relative = "editor",
-  -- Can be a string/number (e.g. "50%") or a table defining both axes:
   position = {
     row = "10%",
     col = "90%"

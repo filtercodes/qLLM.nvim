@@ -327,18 +327,6 @@ function qllmModule.run_cmd(opts)
         return
     end
 
-    -- Handle `tree` as a special case
-    if command == "tree" then
-        local query = opts.fargs[2] or ""
-        if query == "" then
-            vim.notify("Usage: :Chat tree <function_or_variable>", vim.log.levels.ERROR)
-            return
-        end
-        local ProjectContext = require("qllm.project_context")
-        ProjectContext.show_tree(query, bufnr)
-        return
-    end
-
     -- 2. RESOLVE PROVIDER & PRESETS
     local overrides = nil
     -- Command-to-Provider Mapping
@@ -368,6 +356,23 @@ function qllmModule.run_cmd(opts)
 
     -- 3. EXECUTION PIPELINE
     local function execute_with_fresh_context()
+        if command == "tree" then
+            local query = opts.fargs[2] or ""
+            if query == "" then
+                vim.notify("Usage: :Chat tree <function_or_variable>", vim.log.levels.ERROR)
+                return
+            end
+            local ProjectContext = require("qllm.project_context")
+            ProjectContext.show_tree(query, bufnr)
+            return
+        end
+
+        if command == "deadcode" then
+            local ProjectContext = require("qllm.project_context")
+            ProjectContext.show_dead_code(bufnr)
+            return
+        end
+
         local ContextEngine = require("qllm.context_engine")
 
         -- Universal Context Resolution (Files, Selection, Project Map)
@@ -404,6 +409,7 @@ function qllmModule.run_cmd(opts)
 
     -- If command needs project map context, ensure it is fresh before proceeding.
     local needs_project_map = command == "files" or command == "scan" or command == "explain"
+        or command == "tree" or command == "deadcode"
         or opts.args:find("%[") ~= nil -- Prompt contains file blocks
 
     if needs_project_map then

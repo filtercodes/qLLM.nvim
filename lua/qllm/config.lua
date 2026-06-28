@@ -42,11 +42,9 @@ vim.g.qllm_search_model_defaults = vim.tbl_extend("force", {
 
 -- Chat Presets
 for i = 1, 3 do
-    local provider_key = "qllm_api_provider" .. i
     local search_key = "qllm_search_provider" .. i
     local defaults_key = "qllm_commands_defaults" .. i
 
-    vim.g[provider_key] = vim.g[provider_key] or vim.g.qllm_api_provider
     vim.g[search_key] = vim.g[search_key] or "gemini"
     vim.g[defaults_key] = vim.g[defaults_key] or nil
 end
@@ -133,8 +131,7 @@ local kb_defaults = {
     dimension = vim.g.qllm_kb_embedding_dimension or 768,
 
     -- 4. CONTEXT GENERATION
-    context_provider = (vim.g.qllm_project_defaults and vim.g.qllm_project_defaults.provider) 
-        or vim.g.qllm_api_provider or "ollama",
+    context_provider = (vim.g.qllm_project_defaults and vim.g.qllm_project_defaults.provider) or nil,
     context_model = (vim.g.qllm_project_defaults and vim.g.qllm_project_defaults.model) or nil, -- nil means use provider default
     auto_init = true,
     auto_check_freshness = true,

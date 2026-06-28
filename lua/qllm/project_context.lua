@@ -21,7 +21,8 @@ function M.generate_project_skeleton(root)
     local structure = {}
     local count = 0
     for _, file in ipairs(files) do
-        if not file:find("%.git/") then
+        local is_meta = file:find("qLLM%.md$") or file:find("qLLM_map%.json$")
+        if not file:find("%.git/") and not is_meta then
             local stats = vim.loop.fs_stat(file)
             if stats then
                 -- Skeleton: Names and timestamps
@@ -83,7 +84,7 @@ IMPORTANT: Output your response in Markdown format. Start with a metadata block 
 <!-- METADATA: {"hash": "PENDING", "count": 0} -->
 ]], dir_listing, readme_content)
 
-    local provider_name = kb_opts.context_provider or kb_opts.project_provider or "ollama"
+    local provider_name = kb_opts.context_provider or kb_opts.project_provider or vim.g.qllm_api_provider or "ollama"
 
     local Providers = require("qllm.providers")
     local provider = Providers.get_provider({ provider = provider_name })
@@ -141,7 +142,7 @@ function M.get_freshness_status()
     local context = M.get_active_context()
     if not context then return "missing" end
 
-    local metadata_json = context:match("<!%%-%%- METADATA: (.-) %%-%%->")
+    local metadata_json = context:match("<!%-%- METADATA: (.-) %-%->")
     if not metadata_json then return "stale" end
 
     local ok, decoded = pcall(vim.json.decode, metadata_json)
@@ -190,7 +191,23 @@ function M.ensure_fresh_context(callback)
             callback()
         end
     else
-        -- status is "fresh" or "stale" (minor change)
+        if status == "stale" then
+            -- Rebuild local call graph map to keep line numbers accurate
+            local root = M.get_project_root()
+            local current_hash, current_count = M.generate_project_skeleton(root)
+            local context = M.get_active_context()
+            if context then
+                local new_metadata = string.format('<!-- METADATA: {"hash": "%s", "count": %d} -->', current_hash, current_count)
+                local updated_context = context:gsub("<!%-%- METADATA: .- %-%->", new_metadata)
+                local output_path = root .. "qLLM.md"
+                local f = io.open(output_path, "w")
+                if f then
+                    f:write(updated_context)
+                    f:close()
+                end
+            end
+            CodeExtraction.build_and_save_call_graph(root)
+        end
         callback()
     end
 end
@@ -235,6 +252,31 @@ function M.show_tree(query, bufnr)
         local History = require("qllm.history")
         History.add_message(bufnr, "user", "tree " .. query)
         History.add_message(bufnr, "assistant", table.concat(output_lines, "\n"), nil, "tree")
+    end
+end
+
+---Performs dead code analysis and displays it in a popup.
+function M.show_dead_code(bufnr)
+    local root = M.get_project_root()
+    local output_lines, err = CodeExtraction.analyze_dead_code(root)
+    if err then
+        vim.notify(err, vim.log.levels.WARN)
+        return
+    end
+
+    -- Tag buffer metadata to identify it as a deadcode popup
+    vim.b[bufnr].qllm_metadata = {
+        command = "deadcode"
+    }
+
+    local Ui = require("qllm.ui")
+    Ui.popup(output_lines, "markdown", bufnr)
+
+    local heaviness = vim.g.qllm_history_heaviness or "low"
+    if heaviness == "medium" or heaviness == "high" then
+        local History = require("qllm.history")
+        History.add_message(bufnr, "user", "deadcode")
+        History.add_message(bufnr, "assistant", table.concat(output_lines, "\n"), nil, "deadcode")
     end
 end
 

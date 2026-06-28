@@ -191,6 +191,29 @@ function GeminiProvider.make_call(payload, user_message_text, cb, bufnr)
         Api.run_finished_hook()
         return
     end
+
+    -- Translate standard messages format to Gemini format if needed
+    if payload.messages and not payload.contents then
+        local contents = {}
+        for _, msg in ipairs(payload.messages) do
+            local role = (msg.role == "assistant" and "model" or "user")
+            if msg.role == "system" then
+                payload.systemInstruction = {
+                    parts = { { text = msg.content } }
+                }
+            elseif msg.content and msg.content ~= "" then
+                table.insert(contents, {
+                    role = role,
+                    parts = { { text = msg.content } }
+                })
+            end
+        end
+        payload.contents = contents
+        payload.messages = nil
+    end
+
+    -- Clean up fields not supported by Gemini API payload
+    payload.stream = nil
     payload.model = nil -- remove model from payload
     local payload_str = vim.fn.json_encode(payload)
     

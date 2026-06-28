@@ -732,4 +732,371 @@ function M.query_call_tree(query, root)
     return output_lines
 end
 
+---Helper to detect the syntactic style of a file (c, javascript, lua) using filetype and structural heuristics.
+local function detect_language_style(filetype, content)
+    local c_family = {
+        c = true, cpp = true, objc = true, objcpp = true, cuda = true,
+        metal = true, glsl = true, hlsl = true, java = true, cs = true,
+        rust = true, go = true, swift = true
+    }
+    local js_family = {
+        javascript = true, typescript = true, javascriptreact = true, typescriptreact = true,
+        vue = true, svelte = true
+    }
+    if c_family[filetype] then return "c" end
+    if js_family[filetype] then return "javascript" end
+    if filetype == "lua" then return "lua" end
+
+    -- Heuristics fallback: check first 100 lines for structural markers
+    local semicolon_count = 0
+    local brace_count = 0
+    local end_count = 0
+    local lines = vim.split(content, "\n")
+    local max_lines = math.min(100, #lines)
+    for i = 1, max_lines do
+        local line = lines[i]
+        if line then
+            if line:find(";") then semicolon_count = semicolon_count + 1 end
+            if line:find("{") or line:find("}") then brace_count = brace_count + 1 end
+            if line:match("%f[%w]end%f[^%w]") then end_count = end_count + 1 end
+        end
+    end
+    if semicolon_count > 5 and brace_count > 2 then return "c" end
+    if end_count > 2 then return "lua" end
+    return nil
+end
+
+local function is_valid_local_definition(node, lang)
+    -- Ignore member/field expressions (e.g. self.foo, obj.prop, vim.b[bufnr].foo)
+    local parent = node:parent()
+    if parent then
+        local ptype = parent:type()
+        if ptype == "dot_index_expression" or ptype == "bracket_index_expression" or ptype == "member_expression" or ptype == "attribute" or ptype == "field_expression" then
+            return false
+        end
+    end
+
+    local current = node
+    while current do
+        local ctype = current:type()
+        -- Stop walking if we cross an outer function scope boundary
+        if ctype:find("function") or ctype:find("method") or ctype == "func_literal" then
+            if current ~= node and current ~= parent then
+                return false
+            end
+        end
+
+        if lang == "lua" then
+            if ctype == "variable_declaration" or ctype == "local_declaration" or ctype == "local_function" or ctype == "parameters" then
+                return true
+            end
+        elseif lang == "javascript" or lang == "typescript" or lang == "tsx" then
+            if ctype == "variable_declarator" or ctype == "formal_parameters" then
+                return true
+            end
+        elseif lang == "c" or lang == "cpp" then
+            if ctype == "declaration" or ctype == "parameter_declaration" then
+                return true
+            end
+        end
+        current = current:parent()
+    end
+
+    return true
+end
+
+local function detect_unused_vars_ts(file_path, filetype, start_line, end_line)
+    if vim.fn.filereadable(file_path) ~= 1 then return {} end
+    local file_content = table.concat(vim.fn.readfile(file_path), "\n")
+
+    local lang = vim.treesitter.language.get_lang(filetype) or filetype
+    if lang == "" or lang == nil then
+        local style = detect_language_style(filetype, file_content)
+        if style == "c" then
+            lang = "c"
+        elseif style == "lua" then
+            lang = "lua"
+        elseif style == "javascript" then
+            lang = "javascript"
+        else
+            return {}
+        end
+    end
+
+    local ok, parser = pcall(vim.treesitter.get_string_parser, file_content, lang)
+    if not ok or not parser then return {} end
+
+    local tree = parser:parse()[1]
+    if not tree then return {} end
+    local root_node = tree:root()
+
+    local query = vim.treesitter.query.get(lang, "locals")
+    if not query then return {} end
+
+    local target_node = nil
+    local function find_node(node)
+        local ntype = node:type()
+        if ntype:find("function") or ntype:find("method") or ntype == "func_literal" then
+            local r, _, _, _ = node:range()
+            if (r + 1) == start_line then
+                target_node = node
+                return
+            end
+        end
+        for child in node:iter_children() do
+            find_node(child)
+            if target_node then return end
+        end
+    end
+    find_node(root_node)
+
+    if not target_node then
+        local function find_enclosing(node)
+            local ntype = node:type()
+            if ntype:find("function") or ntype:find("method") or ntype == "func_literal" then
+                local sr, _, er, _ = node:range()
+                if (sr + 1) <= start_line and (er + 1) >= end_line then
+                    target_node = node
+                    return
+                end
+            end
+            for child in node:iter_children() do
+                find_enclosing(child)
+                if target_node then return end
+            end
+        end
+        find_enclosing(root_node)
+    end
+
+    if not target_node then return {} end
+
+    local start_row, _, end_row, _ = target_node:range()
+    local definitions = {}
+    local references = {}
+
+    for id, node, metadata in query:iter_captures(target_node, file_content, start_row, end_row) do
+        local capture_name = query.captures[id]
+        if capture_name then
+            local text = vim.treesitter.get_node_text(node, file_content)
+            local r, c = node:range()
+
+            if capture_name:find("definition.var") or capture_name:find("definition.local") then
+                if text ~= "self" and text ~= "_" then
+                    if is_valid_local_definition(node, lang) then
+                        if not definitions[text] then definitions[text] = {} end
+                        table.insert(definitions[text], { row = r, col = c })
+                    end
+                end
+            elseif capture_name:find("reference") then
+                if not references[text] then references[text] = {} end
+                table.insert(references[text], { row = r, col = c })
+            end
+        end
+    end
+
+    local unused = {}
+    for var, defs in pairs(definitions) do
+        local refs = references[var] or {}
+
+        table.sort(defs, function(a, b)
+            if a.row ~= b.row then return a.row < b.row end
+            return a.col < b.col
+        end)
+
+        for i, def in ipairs(defs) do
+            local next_def = defs[i + 1]
+            local has_ref = false
+            for _, ref in ipairs(refs) do
+                local is_after = (ref.row > def.row) or (ref.row == def.row and ref.col > def.col)
+                local is_before_next = true
+                if next_def then
+                    is_before_next = (ref.row < next_def.row) or (ref.row == next_def.row and ref.col < next_def.col)
+                end
+                if is_after and is_before_next then
+                    has_ref = true
+                    break
+                end
+            end
+            if not has_ref then
+                table.insert(unused, { name = var, line = def.row + 1 })
+            end
+        end
+    end
+
+    return unused
+end
+
+---Performs dead code analysis on the project structure and function bodies.
+---@param root string The project root path.
+---@return table|nil output_lines The list of formatted Markdown lines, or nil if an error occurs.
+---@return string|nil error_msg An error message if something fails.
+function M.analyze_dead_code(root)
+    local map_path = root .. "qLLM_map.json"
+    if vim.fn.filereadable(map_path) ~= 1 then
+        return nil, "Project call graph not initialized. Please run :Chat init first."
+    end
+
+    local json_content = table.concat(vim.fn.readfile(map_path), "\n")
+    local ok, map_data = pcall(vim.json.decode, json_content)
+    if not ok or not map_data then
+        return nil, "Error reading call graph metadata."
+    end
+
+    local unused_funcs = {}
+    local unfinished_funcs = {}
+    local unused_vars = {}
+
+    -- 1. Unused / Disconnected Functions
+    for _, f in ipairs(map_data) do
+        if not f.callers or #f.callers == 0 then
+            table.insert(unused_funcs, f)
+        end
+    end
+
+    table.sort(unused_funcs, function(a, b)
+        if a.file ~= b.file then return a.file < b.file end
+        return a.start_line < b.start_line
+    end)
+
+    -- Helper to read body lines
+    local function get_file_lines(file_path, start_line, end_line)
+        if vim.fn.filereadable(file_path) ~= 1 then return {} end
+        local all_lines = vim.fn.readfile(file_path)
+        local lines = {}
+        for i = start_line, end_line do
+            if all_lines[i] then
+                table.insert(lines, all_lines[i])
+            end
+        end
+        return lines
+    end
+
+    -- 2. Unfinished/Stub Functions & Unused Variables
+    for _, f in ipairs(map_data) do
+        local full_path = root .. f.file
+        local body_lines = get_file_lines(full_path, f.start_line, f.end_line)
+        if #body_lines > 0 then
+            local filetype = vim.filetype.match({ filename = full_path }) or ""
+            local file_content = table.concat(body_lines, "\n")
+            local lang_style = detect_language_style(filetype, file_content)
+
+            local has_todo = false
+            local has_code = false
+            local is_stub = false
+
+            local clean_lines = {}
+            for _, line in ipairs(body_lines) do
+                local clean = line
+                -- Strip string literals first so embedded comment tokens are ignored
+                clean = clean:gsub('"[^"]*"', ""):gsub("'[^']*'", ""):gsub("`[^`]*`", ""):gsub("%%[%%[.-%%]%%]", "")
+                if clean:match("TODO") or clean:match("FIXME") then
+                    has_todo = true
+                end
+
+                -- Strip comments
+                if lang_style == "lua" then
+                    clean = clean:gsub("%-%-.*", "")
+                elseif filetype == "python" or filetype == "yaml" or filetype == "sh" or lang_style == nil then
+                    clean = clean:gsub("#.*", "")
+                else
+                    clean = clean:gsub("//.*", ""):gsub("/%*.-%*/", "")
+                end
+
+                -- Check if it contains code statements
+                local trimmed = vim.trim(clean)
+                if trimmed ~= "" then
+                    local is_boilerplate = false
+                    if lang_style == "lua" then
+                        is_boilerplate = trimmed:match("^local%s+function") or trimmed:match("^function") or trimmed == "end" or trimmed == "return" or trimmed == "return nil"
+                    elseif filetype == "python" or lang_style == nil then
+                        is_boilerplate = trimmed:match("^def%s+") or trimmed == "pass" or trimmed == "return" or trimmed == "return None"
+                    elseif lang_style == "javascript" then
+                        is_boilerplate = trimmed:match("^function%s+") or trimmed:match("^const%s+[%w_]+%s*=%s*%([^%)]*%)%s*=>") or trimmed == "}" or trimmed == "return" or trimmed == "return null"
+                    end
+
+                    if not is_boilerplate then
+                        has_code = true
+                    end
+                end
+                table.insert(clean_lines, clean)
+            end
+
+            if not has_code then
+                is_stub = true
+            end
+
+            if has_todo then
+                table.insert(unfinished_funcs, { func = f, reason = "contains TODO/FIXME comments" })
+            elseif is_stub then
+                table.insert(unfinished_funcs, { func = f, reason = "empty or stub function" })
+            end
+
+            -- Detect Unused local variables
+            local unused_ts = detect_unused_vars_ts(full_path, filetype, f.start_line, f.end_line)
+            for _, item in ipairs(unused_ts) do
+                table.insert(unused_vars, {
+                    name = item.name,
+                    file = f.file,
+                    line = item.line
+                })
+            end
+        end
+    end
+
+    table.sort(unfinished_funcs, function(a, b)
+        if a.func.file ~= b.func.file then return a.func.file < b.func.file end
+        return a.func.start_line < b.func.start_line
+    end)
+    table.sort(unused_vars, function(a, b)
+        if a.file ~= b.file then return a.file < b.file end
+        return a.line < b.line
+    end)
+
+    -- Format Markdown
+    local output_lines = {}
+    table.insert(output_lines, "# Dead Code Analysis")
+    table.insert(output_lines, "")
+
+    local has_any_dead_code = false
+
+    if #unused_funcs > 0 then
+        has_any_dead_code = true
+        table.insert(output_lines, "## Unused / Disconnected Functions")
+        table.insert(output_lines, "*Functions defined in the project but never called by other mapped functions.*")
+        table.insert(output_lines, "")
+        for _, f in ipairs(unused_funcs) do
+            table.insert(output_lines, string.format("- [%s] (%s:L%d) - 0 callers", f.name, f.file, f.start_line))
+        end
+        table.insert(output_lines, "")
+    end
+
+    if #unfinished_funcs > 0 then
+        has_any_dead_code = true
+        table.insert(output_lines, "## Unfinished / Stub Functions")
+        table.insert(output_lines, "*Functions that contain TODO/FIXME tags or have empty/stub bodies.*")
+        table.insert(output_lines, "")
+        for _, entry in ipairs(unfinished_funcs) do
+            table.insert(output_lines, string.format("- [%s] (%s:L%d) - %s", entry.func.name, entry.func.file, entry.func.start_line, entry.reason))
+        end
+        table.insert(output_lines, "")
+    end
+
+    if #unused_vars > 0 then
+        has_any_dead_code = true
+        table.insert(output_lines, "## Unused Local Variables")
+        table.insert(output_lines, "*Variables declared but never referenced within their enclosing scope.*")
+        table.insert(output_lines, "")
+        for _, v in ipairs(unused_vars) do
+            table.insert(output_lines, string.format("- [%s] (%s:L%d) - declared but never referenced", v.name, v.file, v.line))
+        end
+        table.insert(output_lines, "")
+    end
+
+    if not has_any_dead_code then
+        table.insert(output_lines, "All code clean!")
+    end
+
+    return output_lines
+end
+
 return M
