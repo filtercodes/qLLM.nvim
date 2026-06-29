@@ -11,6 +11,9 @@ local command_descriptions = {
     explain = "Provides a detailed explanation of the selected code. It breaks down the logic and explains it in simple terms, useful for understanding complex legacy code.",
     files = "Reads multiple local project files (supports wildcards) and passes their content as context to the prompt.",
     scan = "Performs a hybrid search (fuzzy/literal) across local project files and sends relevant chunks to the LLM.",
+    init = "Analyzes the current project directory and creates a `qLLM.md` map to enable project-specific context orchestration.",
+    tree = "Queries the call graph or reference map for the specified function or variable (e.g. `:Chat tree my_func`), recursively walking symbol connections.",
+    deadcode = "Runs static analysis on the mapped codebase to identify unused functions, stubs, and local variables.",
     wiki = "Performs a semantic search across your local Knowledge Base using Hierarchical RAG (Map & Territory).",
     wiki_index = "Scans your KB folder and performs a 'one-pass' indexing with LLM-generated summaries and vectors.",
     wiki_lint = "Runs the Global Auditor to find 'Shadow Concepts' and 'Orphan Files', populating the Quickfix list.",
@@ -20,12 +23,16 @@ local command_descriptions = {
     opt = "Suggests optimizations for the selected code. It looks for performance improvements or cleaner ways to implement the same logic.",
     debug = "Analyzes the selected code for potential bugs or issues. It acts as a static analysis tool to spot logical errors or common pitfalls.",
     recall = "Displays the last response from the assistant in a popup window. Accepts an optional number to go further back (e.g., `:Chat recall 2` for the second-to-last response).",
+    recallq = "Displays the last prompt/question sent to the assistant in a popup window. Accepts an optional index (e.g., `:Chat recallq 2`).",
     undo = "Removes the last exchange (your prompt and the assistant's response) from the chat history. Useful for undoing a bad conversation turn.",
     clear = "Clears the chat history for the current buffer. This resets the conversation context.",
     help = "Displays this help file, listing available commands, keybindings, and configuration options.",
     heavy = "Configures the heaviness level of the chat history. Usage: `:Chat heavy [low|medium|high]`. Defaults to low.",
     hcopy = "Copies chat history from a source buffer into the current buffer. Usage: `:Chat hcopy [src_bufnr] [merge]`.",
     hlist = "Lists all buffers with active chat history in a popup table.",
+    export = "Exports the current buffer's active conversation history to a JSON file. Usage: `:Chat export [filepath]`.",
+    load = "Loads a text file as context or restores/merges a previously exported JSON session. Usage: `:Chat load [filepath]`.",
+    json = "Launches the interactive JSON explorer. Inside the popup, use `f` and `d` to cycle indexes.",
 }
 
 function M.get_help_lines()
@@ -50,11 +57,11 @@ function M.get_help_lines()
 
     local commnds_listed = {
         "chat", "search", "complete", "edit",
-        "explain", "files", "scan",
+        "explain", "files", "scan", "init", "tree", "deadcode",
         "wiki", "wiki_index", "wiki_save", "wiki_lint",
         "doc", "tests", "opt", "debug",
-        "recall", "undo", "clear", "help",
-        "heavy", "hcopy", "hlist"
+        "recall", "recallq", "undo", "clear", "help",
+        "heavy", "hcopy", "hlist", "export", "load", "json"
     }
 
     local all_commands = {}
@@ -202,7 +209,7 @@ function M.get_help_lines()
     table.insert(lines, "### 4. History Navigation")
     table.insert(lines, "1. Run `:Chat recall` to view the last assistant answer.")
     table.insert(lines, "2. Run `:Chat recallq` to view the *prompt* you sent to get that answer.")
-    table.insert(lines, "3. Create custom keybindings (e.g., `<leader>qw` or `<leader>qf`) to walk backward and forward through the conversation history.")
+    table.insert(lines, "3. Once any recall/recallq popup is open, press `f` to go forward and `d` to go backward in-place.")
     
     return lines
 end

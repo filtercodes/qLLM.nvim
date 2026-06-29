@@ -10,6 +10,58 @@ local ui_to_owner_map = {}
 -- Track which popups are currently active
 local active_popups = {}
 
+-- Setup global autocommands to keep popups in sync with buffer/window state.
+local sync_group = vim.api.nvim_create_augroup("qllm_ui_sync", { clear = true })
+vim.api.nvim_create_autocmd("BufEnter", {
+    group = sync_group,
+    callback = function(args)
+        local cur_buf = args.buf
+        local cur_win = vim.api.nvim_get_current_win()
+
+        -- Prevent main buffers from loading inside popup windows (e.g. `:enew` in popup)
+        for p_buf, info in pairs(active_popups) do
+            if info.ui_elem and info.ui_elem.winid == cur_win then
+                if cur_buf ~= p_buf then
+                    local owner_buf = info.owner
+
+                    -- Close the popup
+                    Ui.close_active_popup(p_buf)
+
+                    -- Find or focus the owner window, or any non-floating window
+                    local owner_win = vim.fn.bufwinid(owner_buf)
+                    if owner_win ~= -1 then
+                        vim.api.nvim_set_current_win(owner_win)
+                    else
+                        for _, win in ipairs(vim.api.nvim_list_wins()) do
+                            local config = vim.api.nvim_win_get_config(win)
+                            if config.relative == "" then
+                                vim.api.nvim_set_current_win(win)
+                                break
+                            end
+                        end
+                    end
+
+                    -- Open the new buffer in the focused main window
+                    vim.api.nvim_win_set_buf(0, cur_buf)
+                    return
+                end
+            end
+        end
+
+        -- Close popups when switching active buffers in the main editor window
+        if active_popups[cur_buf] or ui_to_owner_map[cur_buf] then
+            -- We are focusing the popup itself; do not close it.
+            return
+        end
+
+        for p_buf, info in pairs(active_popups) do
+            if info.owner ~= cur_buf then
+                Ui.close_active_popup(p_buf)
+            end
+        end
+    end
+})
+
 ---Helper to save the current cursor position of a UI popup back to history.
 function Ui.save_cursor_pos_for_buf(ui_bufnr)
     local info = active_popups[ui_bufnr]
@@ -18,7 +70,7 @@ function Ui.save_cursor_pos_for_buf(ui_bufnr)
     if not vim.api.nvim_buf_is_valid(ui_bufnr) then return end
 
     local recall_index = vim.b[ui_bufnr].qllm_recall_index
-    if not recall_index then return end
+    if not recall_index or vim.b[ui_bufnr].qllm_show_question then return end
 
     local winid = vim.fn.bufwinid(ui_bufnr)
     if winid ~= -1 then
@@ -127,6 +179,7 @@ function Ui.create_window(filetype, bufnr, start_row, start_col, end_row, end_co
     if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
         vim.b[ui_bufnr].qllm_metadata = vim.b[bufnr].qllm_metadata
         vim.b[ui_bufnr].qllm_recall_index = vim.b[bufnr].qllm_recall_index
+        vim.b[ui_bufnr].qllm_show_question = vim.b[bufnr].qllm_show_question
     end
 
     -- State registration
@@ -275,6 +328,59 @@ function Ui.window_mapping(ui_elem)
     ui_elem:map("n", vim.g.qllm_ui_commands.use_as_input, function()
         vim.api.nvim_feedkeys("ggVG:Chat ", "n", false)
     end, { noremap = false })
+
+    -- Setup buffer-local history traversal for [ and ] if it is a recall/recallq popup
+    if vim.b[ui_elem.bufnr].qllm_recall_index ~= nil then
+        local function traverse_recall(direction)
+            local cur_index = vim.b[ui_elem.bufnr].qllm_recall_index or 1
+            local next_index = cur_index
+            if direction == "forward" then
+                next_index = math.max(1, cur_index - 1)
+            else
+                next_index = cur_index + 1
+            end
+
+            local owner_buf = ui_to_owner_map[ui_elem.bufnr]
+            if not owner_buf or not vim.api.nvim_buf_is_valid(owner_buf) then return end
+
+            local History = require("qllm.history")
+            local Utils = require("qllm.utils")
+            local last_response, model, cmd, cursor_pos, question = History.get_last_response(owner_buf, next_index)
+
+            local show_question = vim.b[ui_elem.bufnr].qllm_show_question
+            local display_text = show_question and question or last_response
+
+            if display_text then
+                vim.b[ui_elem.bufnr].qllm_recall_index = next_index
+                vim.b[owner_buf].qllm_recall_index = next_index
+                vim.b[owner_buf].qllm_metadata = { model = model, command = cmd }
+
+                -- Update popup content in-place
+                vim.api.nvim_buf_set_option(ui_elem.bufnr, "modifiable", true)
+                vim.api.nvim_buf_set_lines(ui_elem.bufnr, 0, -1, false, Utils.parse_lines(display_text))
+                vim.api.nvim_buf_set_option(ui_elem.bufnr, "modifiable", false)
+
+                Ui.sync_window_size(ui_elem.bufnr)
+                if cursor_pos and not show_question then
+                    local winid = vim.fn.bufwinid(ui_elem.bufnr)
+                    if winid ~= -1 then
+                        pcall(vim.api.nvim_win_set_cursor, winid, cursor_pos)
+                    end
+                end
+            else
+                local msg = show_question and "question" or "response"
+                vim.notify(string.format("No %s found at recall index %d.", msg, next_index), vim.log.levels.WARN, { title = "qLLM" })
+            end
+        end
+
+        ui_elem:map("n", "f", function()
+            traverse_recall("forward")
+        end, { noremap = true, silent = true })
+
+        ui_elem:map("n", "d", function()
+            traverse_recall("backward")
+        end, { noremap = true, silent = true })
+    end
 
     for _, command in ipairs(vim.g.qllm_ui_custom_commands) do
         ui_elem:map(command[1], command[2], command[3], command[4])

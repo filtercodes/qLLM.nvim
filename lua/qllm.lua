@@ -73,14 +73,11 @@ function qllmModule.run_cmd(opts)
         local display_text = show_question and question or last_response
 
         if display_text then
-            if not show_question then
-                -- Only store index and metadata if we are showing the answer (Pro features)
-                vim.b[bufnr].qllm_recall_index = recall_offset
-                vim.b[bufnr].qllm_metadata = { model = model, command = cmd }
-            else
-                -- If showing question, ensure we don't save cursor on close
-                vim.b[bufnr].qllm_recall_index = nil
-            end
+            -- Store index, metadata, and show_question flag on the owner buffer
+            -- so that the popup buffer can inherit it for traversal.
+            vim.b[bufnr].qllm_recall_index = recall_offset
+            vim.b[bufnr].qllm_metadata = { model = model, command = cmd }
+            vim.b[bufnr].qllm_show_question = show_question
 
             local start_row, start_col, end_row, end_col = Utils.get_visual_selection()
             Ui.popup(Utils.parse_lines(display_text), vim.g.qllm_text_popup_filetype, bufnr, start_row, start_col, end_row, end_col, (not show_question and cursor_pos or nil))
@@ -324,6 +321,37 @@ function qllmModule.run_cmd(opts)
     if command == "init" then
         local ProjectContext = require("qllm.project_context")
         ProjectContext.init_project()
+        return
+    end
+
+    -- Handle `json` as a special case
+    if command == "json" then
+        local filepath = opts.fargs[2]
+        if not filepath then
+            local cur_file = vim.api.nvim_buf_get_name(0)
+            if cur_file:match("%.json$") then
+                filepath = cur_file
+            else
+                vim.notify("Usage: :Chat json <filepath> [initial.path]", vim.log.levels.ERROR, { title = "qLLM" })
+                return
+            end
+        end
+
+        local initial_path = {}
+        local initial_path_str = opts.fargs[3]
+        if initial_path_str then
+            for part in string.gmatch(initial_path_str, "[^.]+") do
+                local num = tonumber(part)
+                if num then
+                    table.insert(initial_path, num)
+                else
+                    table.insert(initial_path, part)
+                end
+            end
+        end
+
+        local JsonExplore = require("qllm.json_explore")
+        JsonExplore.start_explorer(filepath, initial_path)
         return
     end
 

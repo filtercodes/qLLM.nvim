@@ -115,6 +115,11 @@ vim.g.qllm_history_opts = vim.tbl_extend("force", {
     timeout = 1800, -- 30 minutes
 }, vim.g.qllm_history_opts or {})
 
+-- JSON explorer newline formatting (converts \n strings to real newlines)
+if vim.g.qllm_json_newline == nil then
+    vim.g.qllm_json_newline = true
+end
+
 -- Knowledge Base Namespace (Wiki & Project Context)
 local kb_defaults = {
     -- 1. INFRASTRUCTURE

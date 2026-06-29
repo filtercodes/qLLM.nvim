@@ -131,6 +131,7 @@ Commands are logically categorized into **Action** (direct text generation or ed
 | hcopy  |  number and "merge" | Copy entire buffer history to another buffer. If passing merge command after buffer number, both buffers will be merged. |
 | load   |  filepath or selection | Load text selection or file content into the chat history. If the file is a qLLM exported JSON history, it will restore or merge it. |
 | export |  filepath or none | Export the current chat history to a JSON file. If filepath is omitted, it auto-generates a filename based on the project folder and date. |
+| json   |  filepath, none, or filepath + path | Open interactive JSON tree explorer. Supports keypath drilling, back navigation, and automatic index pagination. |
 | heavy  |  "low", "medium", or "high" | Configures the heaviness level of the chat history. Dynamically changes how much context (files, selections, search results) is preserved in subsequent turns. |
 
 
@@ -385,16 +386,12 @@ The idea is that some context is preservable and static with high importance and
 
 #### Chat History navigation
 
-Walk through previous assistant responses using keyboard shortcuts.
+View previous assistant responses in a popup window using keyboard shortcuts:
 
 ```lua
 local qllm = require("qllm")
 
--- Walk backward/forward through previous messages
-vim.keymap.set("n", "<leader>qw", function() qllm.recall("backward") end)
-vim.keymap.set("n", "<leader>qf", function() qllm.recall("forward") end)
-
--- Map keys 1-9 to jump to specific history items (e.g., <leader>q1 is last, q2 is one before, etc.)
+-- Map keys 1-9 to view specific history items in a popup (e.g., <leader>q1 is last, q2 is one before, etc.)
 for i = 1, 9 do
     vim.keymap.set("n", "<leader>q" .. i, function() qllm.recall(i) end)
 end
@@ -403,6 +400,10 @@ end
 vim.keymap.set("n", "<leader>qu", function() qllm.undo() end)
 vim.keymap.set("n", "<leader>qc", function() qllm.clear() end)
 ```
+
+To traverse the history without closing and reopening the window:
+*   Press `f` to go forward (toward the most recent response/question).
+*   Press `d` to go backward (toward older responses/questions).
 
 #### Chat History Copy and Merge
 
@@ -446,6 +447,26 @@ You can save and restore conversation histories to share them, backup your work,
   ```
 
 If you load a text file or visual selection, it is appended to the chat history as a user message and balanced with a mock assistant acknowledgment to maintain role alternation. If you load an exported `qllm` history JSON file, it will restore the history exactly as it was. If the active buffer already has history, the imported messages are merged/appended onto the end of the current conversation (exactly like `hcopy merge` does).
+
+### Interactive JSON Explorer
+
+To inspect structured data and load specific keys or values into the LLM context use `:Chat json`:
+
+- **Opening**: Open the explorer on a JSON file:
+  ```vim
+  :Chat json                  -- opens the current active buffer if it has a .json extension
+  :Chat json config.json      -- opens the specified JSON file
+  :Chat json config.json database.credentials.1.user -- opens directly at a nested path
+  ```
+- **Navigation Controls**:
+  - Press `<CR>` (Enter) on any line matching `▶ [key]` to go into it.
+  - Press `<CR>` on `◀ [..]` or press `<BS>` (Backspace) anywhere to go back up to the parent directory.
+- **Index Pagination (Folding Point Traversal)**:
+  - If the path you are exploring contains a numeric array/object index (e.g. `users.1.name`), the first numeric coordinate (scanning left-to-right) acts as the active folding point.
+  - While inside the JSON explorer popup, you can press `f` (forward) or `d` (backward) to automatically increment or decrement that index and page through different records (e.g., transitions to `users.2.name`, `users.3.name`) while preserving your deep nested position!
+  - **Multiple / Nested Indices**: Only one folding point is active at a time. If you have nested coordinates (e.g. `departments.2.employees.5.salary`), the leftmost index (`2`) is traversed. To target a deeper index dynamically, change the exploration root when launching the command (e.g. `:Chat json config.json departments.2` leaves `2` behind in the root, making the employee index `5` the active folding point).
+- **Context Injection**:
+  - Since the explorer is a standard buffer, you can visually select any keys or values displayed and run `:'<,'>Chat load` to dump them into the active conversation history.
 
 ## Popup options
 
