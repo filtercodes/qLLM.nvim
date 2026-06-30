@@ -155,7 +155,7 @@ function Ui.sync_window_size(ui_bufnr)
     return Window.sync_size(ui_bufnr, info)
 end
 
-function Ui.create_window(filetype, bufnr, start_row, start_col, end_row, end_col)
+function Ui.create_window(filetype, bufnr, start_row, start_col, end_row, end_col, is_full_height)
     -- Close any existing popup for this owner before opening a new one
     Ui.close_active_popup(bufnr)
 
@@ -167,7 +167,7 @@ function Ui.create_window(filetype, bufnr, start_row, start_col, end_row, end_co
     elseif popup_type == "vertical" then
         ui_elem, max_h, max_row, max_w, col = Window.create_vertical()
     else
-        ui_elem, max_h, max_row, max_w, col = Window.create_popup()
+        ui_elem, max_h, max_row, max_w, col = Window.create_popup(is_full_height)
     end
     
     -- mount/open the component
@@ -191,10 +191,11 @@ function Ui.create_window(filetype, bufnr, start_row, start_col, end_row, end_co
         max_row = max_row,
         max_w = max_w,
         col = col,
-        current_h = (popup_type == "popup" and 1 or max_h),
+        current_h = (popup_type == "popup" and (is_full_height and max_h or 1) or max_h),
         current_w = max_w,
         last_chunk_was_thinking = false,
         following = true,
+        is_full_height = is_full_height,
     }
 
     if popup_type == "popup" then
@@ -326,7 +327,7 @@ function Ui.window_mapping(ui_elem)
     end)
 
     ui_elem:map("n", vim.g.qllm_ui_commands.use_as_input, function()
-        vim.api.nvim_feedkeys("ggVG:Chat ", "n", false)
+        vim.api.nvim_feedkeys("ggVG:Que ", "n", false)
     end, { noremap = false })
 
     -- Setup buffer-local history traversal for [ and ] if it is a recall/recallq popup

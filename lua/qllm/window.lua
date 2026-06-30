@@ -142,6 +142,11 @@ function Window.sync_size(ui_bufnr, info)
         return 0, 0
     end
 
+    -- Skip shrinking for full-height input windows
+    if info.is_full_height then
+        return 0, 0
+    end
+
     local lines = vim.api.nvim_buf_get_lines(ui_bufnr, 0, -1, false)
     local visual_height = 0
     local available_width = info.max_w

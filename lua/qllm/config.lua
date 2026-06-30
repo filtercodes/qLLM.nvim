@@ -40,7 +40,7 @@ vim.g.qllm_search_model_defaults = vim.tbl_extend("force", {
     local_grounding = { model = "qwen3:8b" },
 }, vim.g.qllm_search_model_defaults or {})
 
--- Chat Presets
+-- Presets
 for i = 1, 3 do
     local search_key = "qllm_search_provider" .. i
     local defaults_key = "qllm_commands_defaults" .. i
@@ -104,7 +104,7 @@ vim.g.qllm_vertical_popup_size = "50%"
 vim.g.qllm_history_heaviness = vim.g.qllm_history_heaviness or "low"
 
 vim.g.qllm_history_opts = vim.tbl_extend("force", {
-    summarize_history = "messages",
+    summarize_style = "messages",
     -- "none"      -> no summarization, sliding window only
     -- "messages"  -> summarize when message count exceeds max_messages
     -- "tokens"    -> summarize when token count exceeds max_tokens

@@ -237,7 +237,7 @@ function M.navigate(bufnr, direction)
     end
 end
 
-function M.start_explorer(filepath, initial_path)
+function M.start_explorer(filepath, initial_path, bufnr)
     local expanded = vim.fn.expand(filepath)
     if vim.fn.filereadable(expanded) ~= 1 then
         vim.notify("json_explore: File not found or unreadable: " .. filepath, vim.log.levels.ERROR, { title = "qLLM" })
@@ -251,12 +251,9 @@ function M.start_explorer(filepath, initial_path)
         return
     end
 
-    -- Create popup window using Nui
-    local ui_elem, max_h, max_row, max_w, col = Window.create_popup(true)
-    ui_elem:mount()
+    -- Create popup window using centralized Ui.create_window to register ownership
+    local ui_elem = Ui.create_window("markdown", bufnr, nil, nil, nil, nil, true)
     local ui_bufnr = ui_elem.bufnr
-
-    Ui.sync_window_size(ui_bufnr)
 
     -- Setup buffer-local state inside pure Lua cache
     json_cache[ui_bufnr] = decoded
@@ -270,9 +267,6 @@ function M.start_explorer(filepath, initial_path)
     vim.b[ui_bufnr].json_path = initial_path or {}
     vim.b[ui_bufnr].json_file = expanded
     vim.b[ui_bufnr].qllm_metadata = { command = "json_explore" }
-
-    -- Map standard window mappings (like 'q' to quit, esc, etc.)
-    Ui.window_mapping(ui_elem)
 
     -- Map Enter key in this buffer to handle navigation
     vim.keymap.set("n", "<CR>", function()

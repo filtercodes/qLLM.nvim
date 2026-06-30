@@ -536,7 +536,7 @@ end
 function M.query_call_tree(query, root)
     local map_path = root .. "qLLM_map.json"
     if vim.fn.filereadable(map_path) ~= 1 then
-        return nil, "Project call graph not initialized. Please run :Chat init first."
+        return nil, "Project call graph not initialized. Please run :Que init first."
     end
 
     local json_content = table.concat(vim.fn.readfile(map_path), "\n")
@@ -933,7 +933,7 @@ end
 function M.analyze_dead_code(root)
     local map_path = root .. "qLLM_map.json"
     if vim.fn.filereadable(map_path) ~= 1 then
-        return nil, "Project call graph not initialized. Please run :Chat init first."
+        return nil, "Project call graph not initialized. Please run :Que init first."
     end
 
     local json_content = table.concat(vim.fn.readfile(map_path), "\n")

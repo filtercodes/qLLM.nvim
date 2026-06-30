@@ -72,12 +72,9 @@ function M.add_message(bufnr, role, content, model, command, extra)
 
     local opts = vim.g.qllm_history_opts or {}
     local max_messages = opts.max_messages or 50
-    local max_tokens   = opts.max_tokens   or 8000
+    local max_tokens   = opts.max_tokens   or 24000
 
-    -- Normalize legacy boolean values to the new string enum.
-    -- true  -> "messages"  (old default behaviour)
-    -- false -> "none"
-    local summarize_mode = opts.summarize_history
+    local summarize_mode = opts.summarize_style
     if summarize_mode == true  then summarize_mode = "messages" end
     if summarize_mode == false then summarize_mode = "none"     end
     summarize_mode = summarize_mode or "messages"

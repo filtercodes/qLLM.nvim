@@ -108,36 +108,8 @@ function qllmModule.run_cmd(opts)
 
     -- Handle popup command as a special case
     if command == "popup" then
-        local Window = require("qllm.window")
-        ui_elem, max_h, max_row, max_w, col = Window.create_popup(true)
-        ui_elem:mount()
-        local ui_bufnr = ui_elem.bufnr
-        Ui.sync_window_size(ui_bufnr)
-
-        -- Event: Handle BufLeave - buffer cleanup and unmounting
-        local event = require("nui.utils.autocmd").event
-        if vim.g.qllm_close_on_leave then
-            -- Default: Close when clicking away/switching buffers
-            ui_elem:on(event.BufLeave, function()
-                ui_to_owner_map[ui_bufnr] = nil
-                active_popups[ui_bufnr] = nil
-                ui_elem:unmount()
-            end)
-        else
-        -- Persistent: Only clean up state when explicitly closed (via q, <esc>, etc.)
-            ui_elem:on(event.BufDelete, function()
-                ui_to_owner_map[ui_bufnr] = nil
-                active_popups[ui_bufnr] = nil
-            end)
-        end
-
-        vim.api.nvim_buf_set_option(ui_elem.bufnr, "filetype", filetype)
-
-        -- Mappings
-        ui_elm = Ui.window_mapping(ui_elem)
-
-        return ui_elm
-        --return
+        local ui_elem = Ui.create_window(filetype, bufnr, nil, nil, nil, nil, true)
+        return ui_elem
     end
 
     -- hlist: show all buffers that have chat history
@@ -209,9 +181,9 @@ function qllmModule.run_cmd(opts)
 
     -- hcopy: copy history from a source buffer into the current buffer ─────
     if command == "hcopy" then
-        --  :Chat hcopy          -> copy from alternate buffer (#)
-        --  :Chat hcopy 7        -> copy from bufnr 7
-        --  :Chat hcopy 7 merge  -> merge instead of replace
+        --  :Que hcopy          -> copy from alternate buffer (#)
+        --  :Que hcopy 7        -> copy from bufnr 7
+        --  :Que hcopy 7 merge  -> merge instead of replace
 
         local src_bufnr
         local merge = false
@@ -240,7 +212,7 @@ function qllmModule.run_cmd(opts)
             src_bufnr = vim.fn.bufnr('#')
             if src_bufnr == -1 then
                 vim.notify(
-                    "hcopy: no alternate buffer found. Specify a bufnr explicitly, e.g. :Chat hcopy 3",
+                    "hcopy: no alternate buffer found. Specify a bufnr explicitly, e.g. :Que hcopy 3",
                     vim.log.levels.WARN, { title = "qLLM" }
                 )
                 return
@@ -286,7 +258,7 @@ function qllmModule.run_cmd(opts)
             vim.g.qllm_history_heaviness = level
             vim.notify("History heaviness set to: " .. level, vim.log.levels.INFO, { title = "qLLM" })
         else
-            vim.notify("Usage: :Chat heavy [low|medium|high]. Current: " .. (vim.g.qllm_history_heaviness or "low"), vim.log.levels.WARN, { title = "qLLM" })
+            vim.notify("Usage: :Que heavy [low|medium|high]. Current: " .. (vim.g.qllm_history_heaviness or "low"), vim.log.levels.WARN, { title = "qLLM" })
         end
         return
     end
@@ -310,7 +282,7 @@ function qllmModule.run_cmd(opts)
         local KB = require("qllm.providers.knowledge_base")
         local filename = opts.fargs[2]
         if not filename then
-            vim.notify("Usage: :Chat wiki_save <filename.md>", vim.log.levels.ERROR)
+            vim.notify("Usage: :Que wiki_save <filename.md>", vim.log.levels.ERROR)
             return
         end
         KB.wiki_save(filename, text_selection)
@@ -332,7 +304,7 @@ function qllmModule.run_cmd(opts)
             if cur_file:match("%.json$") then
                 filepath = cur_file
             else
-                vim.notify("Usage: :Chat json <filepath> [initial.path]", vim.log.levels.ERROR, { title = "qLLM" })
+                vim.notify("Usage: :Que json <filepath> [initial.path]", vim.log.levels.ERROR, { title = "qLLM" })
                 return
             end
         end
@@ -351,7 +323,7 @@ function qllmModule.run_cmd(opts)
         end
 
         local JsonExplore = require("qllm.json_explore")
-        JsonExplore.start_explorer(filepath, initial_path)
+        JsonExplore.start_explorer(filepath, initial_path, bufnr)
         return
     end
 
@@ -408,7 +380,7 @@ function qllmModule.run_cmd(opts)
         if #loaded_files > 0 then
             -- Notifications are handled per-file above
         else
-            vim.notify("Usage: :Chat load <filepath> or select text visually.", vim.log.levels.WARN, { title = "qLLM" })
+            vim.notify("Usage: :Que load <filepath> or select text visually.", vim.log.levels.WARN, { title = "qLLM" })
         end
         return
     end
@@ -468,7 +440,7 @@ function qllmModule.run_cmd(opts)
     }
 
     -- Detect Presets
-    local preset_idx = opts.name:match("Chat(%d)$")
+    local preset_idx = opts.name:match("Pre(%d)$")
     if preset_idx then
         overrides = { preset = tonumber(preset_idx) }
     elseif provider_map[opts.name] then
@@ -488,7 +460,7 @@ function qllmModule.run_cmd(opts)
         if command == "tree" then
             local query = opts.fargs[2] or ""
             if query == "" then
-                vim.notify("Usage: :Chat tree <function_or_variable>", vim.log.levels.ERROR)
+                vim.notify("Usage: :Que tree <function_or_variable>", vim.log.levels.ERROR)
                 return
             end
             local ProjectContext = require("qllm.project_context")
@@ -552,15 +524,15 @@ end
 function qllmModule.recall(arg)
     local fargs = { "recall" }
     if arg then table.insert(fargs, tostring(arg)) end
-    return qllmModule.run_cmd({ fargs = fargs, name = "Chat" })
+    return qllmModule.run_cmd({ fargs = fargs, name = "Que" })
 end
 
 function qllmModule.undo()
-    return qllmModule.run_cmd({ fargs = { "undo" }, name = "Chat" })
+    return qllmModule.run_cmd({ fargs = { "undo" }, name = "Que" })
 end
 
 function qllmModule.clear()
-    return qllmModule.run_cmd({ fargs = { "clear" }, name = "Chat" })
+    return qllmModule.run_cmd({ fargs = { "clear" }, name = "Que" })
 end
 
 function qllmModule.adjust_popup_size(delta_w, delta_h)

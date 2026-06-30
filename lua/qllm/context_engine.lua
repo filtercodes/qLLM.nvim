@@ -439,7 +439,7 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
                 end
             end
         else
-            -- For other commands (e.g. :Chat [A.lua] explain), just inject the files as context
+            -- For other commands (e.g. :Que [A.lua] explain), just inject the files as context
             local context_text = M.format_files_as_context(resolved_files)
             text_selection = system_context .. context_text .. ((text_selection ~= "") and ("\n[USER SELECTION]\n" .. text_selection) or "")
 

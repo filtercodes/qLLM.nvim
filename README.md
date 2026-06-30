@@ -65,18 +65,18 @@ pcall(function() require('vim._core.ui2').enable() end)
 
 ## Commands
 
-The top-level command is `:Chat`. Without passing any additional args it triggers a general LLM request using as input text selection and/or prompt text.
+The top-level command is `:Que`. Without passing any additional args it triggers a general LLM request using as input text selection and/or prompt text.
 
 ![chat](examples/chat.gif?raw=true)
 
 ### Direct Provider commands & Presets
-In addition to `:Chat` (which uses globally configured default provider), you can invoke specific providers directly, bypassing default settings e.g.:
+In addition to `:Que` (which uses globally configured default provider), you can invoke specific providers directly, bypassing default settings e.g.:
 * `:Gemini <prompt>`
 * `:Claude <prompt>` etc.
 
-Using these commands works exactly like `:Chat`, but routes the request to the specified API with its default model.
+Using these commands works exactly like `:Que`, but routes the request to the specified API with its default model.
 
-There are also configurable presets: `:Chat1`, `:Chat2`, and `:Chat3`. To flexibly switch between more different models or providers in the same context window (e.g., setting `:Chat2` to use Anthropic's Claude 4.6 Sonnet while `:Chat` default preset runs a local Ollama instance). See [Overriding command configurations](#overriding-command-configurations) section below for details.
+There are also configurable presets: `:Pre1`, `:Pre2`, and `:Pre3`. To flexibly switch between more different models or providers in the same context window (e.g., setting `:Pre2` to use Anthropic's Claude 4.6 Sonnet while `:Que` default runs a local Ollama instance). See [Overriding command configurations](#overriding-command-configurations) section below for details.
 
 Commands are logically categorized into **Action** (direct text generation or editing) and **Analysis** (context and knowledge gathering). This distinction allows for orchestrating a development workflow by first building a context through analysis before executing targeted actions.
 
@@ -124,14 +124,13 @@ Commands are logically categorized into **Action** (direct text generation or ed
 
 | Command      | Input | Description |
 |--------------|---- |------------------------------------|
-| recall  |  none or number | Displays the last assistant response from the chat history in a popup without altering the history. Optionally accept a number to go further back (e.g., `:Chat recall 2`). |
+| recall  |  none or number | Displays the last assistant response from the chat history in a popup without altering the history. Optionally accept a number to go further back (e.g., `:Que recall 2`). |
 | undo  |  none | Removes the last exchange (prompt and the assistant's response) from the chat history. Useful for reverting a bad conversation turn. |
 | clear  |  none | Completely clears the conversation to start fresh. |
 | hlist  |  none | Shows the information about conversation history: buffer number, the number of messages (and tokens if tiktoken is installed), last model, name. |
 | hcopy  |  number and "merge" | Copy entire buffer history to another buffer. If passing merge command after buffer number, both buffers will be merged. |
 | load   |  filepath or selection | Load text selection or file content into the chat history. If the file is a qLLM exported JSON history, it will restore or merge it. |
 | export |  filepath or none | Export the current chat history to a JSON file. If filepath is omitted, it auto-generates a filename based on the project folder and date. |
-| json   |  filepath, none, or filepath + path | Open interactive JSON tree explorer. Supports keypath drilling, back navigation, and automatic index pagination. |
 | heavy  |  "low", "medium", or "high" | Configures the heaviness level of the chat history. Dynamically changes how much context (files, selections, search results) is preserved in subsequent turns. |
 
 
@@ -140,6 +139,7 @@ Commands are logically categorized into **Action** (direct text generation or ed
 | Command      | Input | Description |
 |--------------|---- |------------------------------------|
 | popup  |  none | Opens an empty popup window - to use for crafting multiline prompt, copy pasting text, etc. |
+| json   |  filepath, none, or filepath + path | Opens JSON explorer in a popup. Supports keypath drilling, back navigation, and automatic index pagination. |
 | help  |  none | Displays the help guide. |
 
 ## Overriding command configurations
@@ -205,12 +205,12 @@ vim.g.qllm_search_model_defaults = {
 vim.g.qllm_show_thinking = true
 ```
 
-### Configuring Presets (:Chat1, :Chat2, :Chat3)
+### Configuring Presets (:Pre1, :Pre2, :Pre3)
 
 Each preset has its own configuration scope. Append `1`, `2`, or `3` to the variables. This is useful for mapping a preset to a completely different stack.
 
 ```lua
--- Configure :Chat1 to be a "Local Dev" preset
+-- Configure :Pre1 to be a "Local Dev" preset
 vim.g.qllm_api_provider1 = "ollama"
 vim.g.qllm_commands_defaults1 = {
     model = "qwen3-coder",
@@ -221,7 +221,7 @@ vim.g.qllm_commands_defaults1 = {
 
 ### Search (Grounding) configuration
 
-`vim.g.qllm_search_provider` - Defines which provider to use for the default `:Chat search` command. Current supported options are `"gemini"`, `"openai"`, `"anthropic"` and `"local_grounding"`. Defaults to `"gemini"`. Set [default grounding model](#configuring-providers-and-models) using `vim.g.qllm_search_model_defaults`.
+`vim.g.qllm_search_provider` - Defines which provider to use for the default `:Que search` command. Current supported options are `"gemini"`, `"openai"`, `"anthropic"` and `"local_grounding"`. Defaults to `"gemini"`. Set [default grounding model](#configuring-providers-and-models) using `vim.g.qllm_search_model_defaults`.
 
 `vim.g.qllm_show_search_sources` - Boolean (Default: `true`). Show or hide the links/citations used by LLM during a search in the popup UI. If you are using a smaller model you can set it to `false` to deal with strict context limits.
 
@@ -242,15 +242,15 @@ qLLM includes a local Knowledge Base system designed to turn your Markdown notes
 ### Context commands (project scope)
 These are commands to inject arbitrary local project context or search results into an LLM request (without bloating the chat history).
 
-*   If you have manually initialized the project with `:Chat init`, qLLM creates an architectural map (`qLLM.md`). This map gets added to the background context of the `files`, `scan`, and `explain` commands to give an LLM better project awareness.
+*   If you have manually initialized the project with `:Que init`, qLLM creates an architectural map (`qLLM.md`). This map gets added to the background context of the `files`, `scan`, and `explain` commands to give an LLM better project awareness.
 
-*   `:Chat init`: Analyzes current project directory and creates a `qLLM.md` map to enable project specific context orchestration.
-*   `:Chat files [file1.py file2.js *.md] prompt`: Reads multiple local files (supports wildcards and escaped quotes) and passes their content as the context for the prompt.
+*   `:Que init`: Analyzes current project directory and creates a `qLLM.md` map to enable project specific context orchestration.
+*   `:Que files [file1.py file2.js *.md] prompt`: Reads multiple local files (supports wildcards and escaped quotes) and passes their content as the context for the prompt.
     *   Note: If no prompt is provided, it defaults to the `explain` command for all files.
-*   `:Chat scan [src/*.lua] query -- prompt`: Performs a fast literal search across local project files for the `"query"`, automatically expands matches to their containing code blocks using Tree-sitter, and sends the relevant chunks to the LLM for analysis.
+*   `:Que scan [src/*.lua] query -- prompt`: Performs a fast literal search across local project files for the `"query"`, automatically expands matches to their containing code blocks using Tree-sitter, and sends the relevant chunks to the LLM for analysis.
     *   Note: If no prompt is provided, it displays the search results in a popup without calling the LLM. The result goes to the chat history so the next LLM inference can see it.
-*   `:Chat tree <function_or_variable>`: Queries the call graph or reference map for the specified function or variable. It parses the indexed map and walks symbol connections to trace upward callers and downward callees recursively.
-*   `:Chat deadcode`: Runs static analysis on the mapped codebase to identify unused/disconnected functions, unfinished stubs (including empty functions and those containing `TODO`/`FIXME` tags), and unused local variables. Selecting any detected item opens the file at the exact coordinate.
+*   `:Que tree <function_or_variable>`: Queries the call graph or reference map for the specified function or variable. It parses the indexed map and walks symbol connections to trace upward callers and downward callees recursively.
+*   `:Que deadcode`: Runs static analysis on the mapped codebase to identify unused/disconnected functions, unfinished stubs (including empty functions and those containing `TODO`/`FIXME` tags), and unused local variables. Selecting any detected item opens the file at the exact coordinate.
     *   Note: Exported public APIs, entry points, or dynamically registered callback functions may be reported as disconnected (having 0 callers) because they are invoked externally or dynamically.
 
 For best results with code analysis, install the Tree-sitter parsers:
@@ -271,10 +271,10 @@ This way the LLM understands both the "big picture" (Map) and the "exact data" (
 ### Wiki management (knowledge scope)
 These commands operate on your `~/knowledge_base` folder (or another folder of your preference), separate from the local project you're currently working on.
 
-*   `:Chat wiki <query>`: Performs a semantic search across the Wiki Knowledge Base using the Hierarchical RAG architecture.
-*   `:Chat wiki_index`: Scans the Wiki folder and performs a "one-pass" indexing. It uses a local LLM to act as a Librarian, generating summaries and schema connections while computing vectors. It includes sha256-based change detection to skip unchanged files.
-*   `:Chat wiki_save filename.md`: Saves the current buffer or visual selection directly into the Wiki and triggers a background index update for that file.
-*   `:Chat wiki_lint`: Runs the Auditor. It populates Neovim Quickfix list with "Shadow Concepts" (highly similar files with no shared tags) and "Orphan Files" (notes that are never mentioned elsewhere).
+*   `:Que wiki <query>`: Performs a semantic search across the Wiki Knowledge Base using the Hierarchical RAG architecture.
+*   `:Que wiki_index`: Scans the Wiki folder and performs a "one-pass" indexing. It uses a local LLM to act as a Librarian, generating summaries and schema connections while computing vectors. It includes sha256-based change detection to skip unchanged files.
+*   `:Que wiki_save filename.md`: Saves the current buffer or visual selection directly into the Wiki and triggers a background index update for that file.
+*   `:Que wiki_lint`: Runs the Auditor. It populates Neovim Quickfix list with "Shadow Concepts" (highly similar files with no shared tags) and "Orphan Files" (notes that are never mentioned elsewhere).
 
 ### Configuration
 
@@ -337,20 +337,20 @@ vim.g.qllm_kb_opts = {
 
 ## Chat History (short-term memory)
 
-qLLM manages history automatically. You can tune its behavior using the `vim.g.qllm_history_opts` table.
+At the high level, context pipeline resembles a queue hence the name qLLM (queue LLM). It’s a First In First Out conversation pipeline that automatically manages itself. You can tune its behavior using the `vim.g.qllm_history_opts` table.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| summarize_history | "messages" | Select a way to track conversation buffer when `max_messages` (or `max_tokens`) is reached; Tokens and messages summarize, and none uses hard sliding window to drop the oldest conversation pairs. |
+| summarize_style | "messages" | Select a way to track conversation buffer when `max_messages` (or `max_tokens`) is reached; Tokens and messages summarize, and none uses hard sliding window to drop the oldest conversation pairs. |
 | summarize_model | *(Global)* | The model to use for background summarization. |
 | summarize_provider | *(Global)* | The provider to use for background summarization. |
-| summarize_percent | 50 | What percentage of messages will be summarized. Default is 50% - half. |
+| summarize_percent | 50 | What percentage of messages will be summarized. Default is 50%. |
 | max_messages | 50 | Total messages to retain before summarizing older ones. |
 | max_tokens | 24000 | Number of tokens to reach for summarization logic to trigger. |
 | time_based_expiry | false | If `true`, history automatically clears after the `timeout`. |
 | timeout | 1800 | Inactivity window (in seconds) before history expires (if `time_based_expiry` set to `true`). |
 
-`summarize_history` takes string as an input. Options are:
+`summarize_style` takes string as an input. Options are:
 - `"none"`      -- no summarization, sliding window only
 - `"messages"`  -- summarize when message count exceeds `max_messages`
 - `"tokens"`    -- summarize when token count exceeds `max_tokens`
@@ -362,7 +362,7 @@ Example configuration (`init.lua`):
 ```lua
 -- Modern history setup with background summarization
 vim.g.qllm_history_opts = {
-    summarize_history = "tokens",
+    summarize_style = "tokens",
     max_tokens = 80000,             -- 80k should be a safe zone for most modern models
     summarize_percent = 30,         -- Rather subtle summarise only 30% of oldest messages
     summarize_provider = "openai",
@@ -375,7 +375,7 @@ vim.g.qllm_history_opts = {
 
 To prevent the LLM context from cluttering quickly or sending stale versions of files, use the **Variable History Heaviness**. You can dynamically control the amount of context (such as resolved file contents, visual selections, and search results) from the commands that is carried forward into subsequent conversation turns.
 
-Default, heaviness setting is `"low"`. It can be set globally via `vim.g.qllm_history_heaviness`, and there is also a command to change it dynamically when required using the `:Chat heavy low|medium|high`.
+Default, heaviness setting is `"low"`. It can be set globally via `vim.g.qllm_history_heaviness`, and there is also a command to change it dynamically when required using the `:Que heavy low|medium|high`.
 
 #### Heaviness levels:
 - **`low` (Default)**: Only the clean query prompt/instruction (e.g., `"FILES: explain this in [history.lua]"`) is recorded in the conversation history. Visual selection code, Tavily search results, and raw file contents are discarded on subsequent turns. This is token-efficient and prevents the LLM from referencing stale, outdated code versions as you modify files.
@@ -384,7 +384,7 @@ Default, heaviness setting is `"low"`. It can be set globally via `vim.g.qllm_hi
 
 The idea is that some context is preservable and static with high importance and requires high heaviness, while other context might be in the process of change or completely non-relevant for the major context of the conversation. Changing the heaviness level on demand, alows for higher granularity in context managent.
 
-#### Chat History navigation
+### History navigation
 
 View previous assistant responses in a popup window using keyboard shortcuts:
 
@@ -405,13 +405,13 @@ To traverse the history without closing and reopening the window:
 *   Press `f` to go forward (toward the most recent response/question).
 *   Press `d` to go backward (toward older responses/questions).
 
-#### Chat History Copy and Merge
+### Copy and Merge
 
 To copy conversation history from one buffer to another use the following workflow.
 - You're in buf 3, had a long chat.
 - Run the command:
 ```
-:Chat hlist
+:Que hlist
 ```
 - It will list the current conversation information in a popup list.
 
@@ -424,9 +424,9 @@ To copy conversation history from one buffer to another use the following workfl
 `:enew`
 - Now in the new buffer, blank slate, run any of the `hcopy` variants:
 ```
-:Chat hcopy          -- copies from buf 3 (alternate buffer, the one you just left)
-:Chat hcopy 3        -- explicit — same result
-:Chat hcopy 3 merge  -- if buf 5 already had some history, append buf 3's on it
+:Que hcopy          -- copies from buf 3 (alternate buffer, the one you just left)
+:Que hcopy 3        -- explicit — same result
+:Que hcopy 3 merge  -- if buf 5 already had some history, append buf 3's on it
 ```
 
 The **alternate buffer** default (`vim.fn.bufnr('#')`) covers the most natural case — you just left the buffer you want to branch from, so number lookup is not needed at all.
@@ -437,26 +437,26 @@ You can save and restore conversation histories to share them, backup your work,
 
 - **Exporting**: Save the active buffer's chat history to a JSON file:
   ```vim
-  :Chat export                 -- saves to qllm_<project>_<date>.json in the current directory
-  :Chat export my_session.json -- saves to the specified file path
+  :Que export                 -- saves to qllm_<project>_<date>.json in the current directory
+  :Que export my_session.json -- saves to the specified file path
   ```
 - **Loading**: Load any file, visual selection, or exported history:
   ```vim
-  :Chat load my_session.json   -- detects the exported history format and restores or merges it
-  :Chat load rules.md          -- treats as a normal text file and loads its contents as context
+  :Que load my_session.json   -- detects the exported history format and restores or merges it
+  :Que load rules.md          -- treats as a normal text file and loads its contents as context
   ```
 
 If you load a text file or visual selection, it is appended to the chat history as a user message and balanced with a mock assistant acknowledgment to maintain role alternation. If you load an exported `qllm` history JSON file, it will restore the history exactly as it was. If the active buffer already has history, the imported messages are merged/appended onto the end of the current conversation (exactly like `hcopy merge` does).
 
-### Interactive JSON Explorer
+### JSON Explorer
 
-To inspect structured data and load specific keys or values into the LLM context use `:Chat json`:
+To inspect structured data and load specific keys or values into the LLM context use `:Que json`:
 
 - **Opening**: Open the explorer on a JSON file:
   ```vim
-  :Chat json                  -- opens the current active buffer if it has a .json extension
-  :Chat json config.json      -- opens the specified JSON file
-  :Chat json config.json database.credentials.1.user -- opens directly at a nested path
+  :Que json                  -- opens the current active buffer if it has a .json extension
+  :Que json config.json      -- opens the specified JSON file
+  :Que json config.json database.credentials.1.user -- opens directly at a nested path
   ```
 - **Navigation Controls**:
   - Press `<CR>` (Enter) on any line matching `▶ [key]` to go into it.
@@ -464,9 +464,9 @@ To inspect structured data and load specific keys or values into the LLM context
 - **Index Pagination (Folding Point Traversal)**:
   - If the path you are exploring contains a numeric array/object index (e.g. `users.1.name`), the first numeric coordinate (scanning left-to-right) acts as the active folding point.
   - While inside the JSON explorer popup, you can press `f` (forward) or `d` (backward) to automatically increment or decrement that index and page through different records (e.g., transitions to `users.2.name`, `users.3.name`) while preserving your deep nested position!
-  - **Multiple / Nested Indices**: Only one folding point is active at a time. If you have nested coordinates (e.g. `departments.2.employees.5.salary`), the leftmost index (`2`) is traversed. To target a deeper index dynamically, change the exploration root when launching the command (e.g. `:Chat json config.json departments.2` leaves `2` behind in the root, making the employee index `5` the active folding point).
+  - **Multiple / Nested Indices**: Only one folding point is active at a time. If you have nested coordinates (e.g. `departments.2.employees.5.salary`), the leftmost index (`2`) is traversed. To target a deeper index dynamically, change the exploration root when launching the command (e.g. `:Que json config.json departments.2` leaves `2` behind in the root, making the employee index `5` the active folding point).
 - **Context Injection**:
-  - Since the explorer is a standard buffer, you can visually select any keys or values displayed and run `:'<,'>Chat load` to dump them into the active conversation history.
+  - Since the explorer is a standard buffer, you can visually select any keys or values displayed and run `:'<,'>Que load` to dump them into the active conversation history.
 
 ## Popup options
 
@@ -657,7 +657,7 @@ vim.g.qllm_print_model = false
 For the faster inference speed with local models via Ollama, you may want to set an empty system prompt for better prompt caching. If you configured a custom one in your `Modelfile`, then be sure to disable it globally in the Ollama provider settings:
 
 ```lua
--- Optimize a preset (e.g., :Chat1)
+-- Optimize a preset (e.g., :Pre1)
 vim.g.qllm_api_provider1 = "ollama"
 vim.g.qllm_commands_defaults1 = {
     system_message_template = "", -- Empty system prompt for better caching
@@ -714,11 +714,11 @@ vim.g.qllm_commands = {
   }
 }
 ```
-The above configuration adds the command `:Chat modernize` that attempts modernize the selected code snippet.
+The above configuration adds the command `:Que modernize` that attempts modernize the selected code snippet.
 
 ### Command args
 
-Commands are normally a single value, for example `:Chat complete`. You can make commands accept additional arguments by using the `{{command_args}}` macro anywhere in either `user_message_template` or `system_message_template`. For example:
+Commands are normally a single value, for example `:Que complete`. You can make commands accept additional arguments by using the `{{command_args}}` macro anywhere in either `user_message_template` or `system_message_template`. For example:
 
 ```lua
 vim.g.qllm_commands = {
@@ -730,7 +730,7 @@ vim.g.qllm_commands = {
 }
 ```
 
-After defining this command, any `:Chat` command that has `testwith` as its first argument will be handled. For example, `:Chat testwith some additional instructions` will be interpreted as `testwith` with `"some additional instructions"`.
+After defining this command, any `:Que` command that has `testwith` as its first argument will be handled. For example, `:Que testwith some additional instructions` will be interpreted as `testwith` with `"some additional instructions"`.
 
 ### Language instructions
 

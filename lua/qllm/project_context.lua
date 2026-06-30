@@ -40,7 +40,7 @@ local CodeExtraction = require("qllm.code_extraction")
 local is_indexing = false
 local last_progress_time = 0
 
----Orchestrates the project initialization (:Chat init).
+---Orchestrates the project initialization (:Que init).
 ---@param callback function? Optional callback for when init is complete.
 function M.init_project(callback)
     local kb_opts = vim.g.qllm_kb_opts or {}
@@ -180,14 +180,14 @@ function M.ensure_fresh_context(callback)
 
     if status == "missing" then
         -- Truly Optional: If the map doesn't exist, we don't nag.
-        -- We only start managing it once the user has manually run :Chat init.
+        -- We only start managing it once the user has manually run :Que init.
         callback()
     elseif status == "significant_change" then
         if auto_init then
             vim.notify("[qLLM] Syncing project map (significant changes detected)...", vim.log.levels.INFO)
             M.init_project(callback)
         else
-            vim.notify("[qLLM] Project map is stale. Run :Chat init to update.", vim.log.levels.WARN)
+            vim.notify("[qLLM] Project map is stale. Run :Que init to update.", vim.log.levels.WARN)
             callback()
         end
     else
@@ -215,7 +215,7 @@ end
 function M.check_freshness()
     local status = M.get_freshness_status()
     if status == "significant_change" then
-        vim.notify("[qLLM] Project map is stale. Run :Chat init to update.", vim.log.levels.WARN)
+        vim.notify("[qLLM] Project map is stale. Run :Que init to update.", vim.log.levels.WARN)
     end
 end
 

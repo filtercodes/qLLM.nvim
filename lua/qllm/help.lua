@@ -12,7 +12,7 @@ local command_descriptions = {
     files = "Reads multiple local project files (supports wildcards) and passes their content as context to the prompt.",
     scan = "Performs a hybrid search (fuzzy/literal) across local project files and sends relevant chunks to the LLM.",
     init = "Analyzes the current project directory and creates a `qLLM.md` map to enable project-specific context orchestration.",
-    tree = "Queries the call graph or reference map for the specified function or variable (e.g. `:Chat tree my_func`), recursively walking symbol connections.",
+    tree = "Queries the call graph or reference map for the specified function or variable (e.g. `:Que tree my_func`), recursively walking symbol connections.",
     deadcode = "Runs static analysis on the mapped codebase to identify unused functions, stubs, and local variables.",
     wiki = "Performs a semantic search across your local Knowledge Base using Hierarchical RAG (Map & Territory).",
     wiki_index = "Scans your KB folder and performs a 'one-pass' indexing with LLM-generated summaries and vectors.",
@@ -22,16 +22,16 @@ local command_descriptions = {
     tests = "Generates unit tests for the selected code. It attempts to use standard testing frameworks appropriate for the language (e.g., JUnit for Java, gtest for C++).",
     opt = "Suggests optimizations for the selected code. It looks for performance improvements or cleaner ways to implement the same logic.",
     debug = "Analyzes the selected code for potential bugs or issues. It acts as a static analysis tool to spot logical errors or common pitfalls.",
-    recall = "Displays the last response from the assistant in a popup window. Accepts an optional number to go further back (e.g., `:Chat recall 2` for the second-to-last response).",
-    recallq = "Displays the last prompt/question sent to the assistant in a popup window. Accepts an optional index (e.g., `:Chat recallq 2`).",
+    recall = "Displays the last response from the assistant in a popup window. Accepts an optional number to go further back (e.g., `:Que recall 2` for the second-to-last response).",
+    recallq = "Displays the last prompt/question sent to the assistant in a popup window. Accepts an optional index (e.g., `:Que recallq 2`).",
     undo = "Removes the last exchange (your prompt and the assistant's response) from the chat history. Useful for undoing a bad conversation turn.",
     clear = "Clears the chat history for the current buffer. This resets the conversation context.",
     help = "Displays this help file, listing available commands, keybindings, and configuration options.",
-    heavy = "Configures the heaviness level of the chat history. Usage: `:Chat heavy [low|medium|high]`. Defaults to low.",
-    hcopy = "Copies chat history from a source buffer into the current buffer. Usage: `:Chat hcopy [src_bufnr] [merge]`.",
+    heavy = "Configures the heaviness level of the chat history. Usage: `:Que heavy [low|medium|high]`. Defaults to low.",
+    hcopy = "Copies chat history from a source buffer into the current buffer. Usage: `:Que hcopy [src_bufnr] [merge]`.",
     hlist = "Lists all buffers with active chat history in a popup table.",
-    export = "Exports the current buffer's active conversation history to a JSON file. Usage: `:Chat export [filepath]`.",
-    load = "Loads a text file as context or restores/merges a previously exported JSON session. Usage: `:Chat load [filepath]`.",
+    export = "Exports the current buffer's active conversation history to a JSON file. Usage: `:Que export [filepath]`.",
+    load = "Loads a text file as context or restores/merges a previously exported JSON session. Usage: `:Que load [filepath]`.",
     json = "Launches the interactive JSON explorer. Inside the popup, use `f` and `d` to cycle indexes.",
 }
 
@@ -40,9 +40,9 @@ function M.get_help_lines()
         "# qLLM.nvim Help",
         "",
         "## Usage",
-        "- `:Chat <prompt>`: Send a general prompt to the LLM.",
-        "- `:Chat <command>`: Execute a specific command (e.g., `:Chat explain`).",
-        "- `:'<,'>Chat <command>`: Execute a command on a visual selection.",
+        "- `:Que <prompt>`: Send a general prompt to the LLM.",
+        "- `:Que <command>`: Execute a specific command (e.g., `:Que explain`).",
+        "- `:'<,'>Que <command>`: Execute a command on a visual selection.",
         "",
         "## UI Keybindings",
     }
@@ -108,6 +108,7 @@ function M.get_help_lines()
     table.insert(lines, "### Model Configuration")
     table.insert(lines, "To change the model or other settings, use the unified defaults table.")
     table.insert(lines, "")
+    
     table.insert(lines, "`vim.g.qllm_commands_defaults` (table)")
     table.insert(lines, "A dual-purpose table. Flat keys act as global defaults for all commands. Nested tables override settings for a specific command.")
     table.insert(lines, "Example:")
@@ -133,7 +134,7 @@ function M.get_help_lines()
     table.insert(lines, "Overrides default grounding model. Be aware that API specs might be different for older models")
     table.insert(lines, "")
 
-    table.insert(lines, "### Chat History (Memory)")
+    table.insert(lines, "### Conversation History (Memory)")
     table.insert(lines, "`vim.g.qllm_chat_history_max_messages` (number)")
     table.insert(lines, "Maximum number of messages to retain in the chat context window. Default: `20`.")
     table.insert(lines, "")
@@ -184,14 +185,14 @@ function M.get_help_lines()
     table.insert(lines, "## Workflow Examples")
     
     table.insert(lines, "### 1. Multi-File Context Understanding")
-    table.insert(lines, "1. Type `:Chat files [src/main.lua src/utils.lua]` How do these files interact?")
+    table.insert(lines, "1. Type `:Que files [src/main.lua src/utils.lua]` How do these files interact?")
     table.insert(lines, "2. Press Enter. The LLM will read both files and answer the prompt.")
     table.insert(lines, "3. *Tip*: Use `<Tab>` after typing `[` to use native file path autocomplete!")
     table.insert(lines, "")
 
     table.insert(lines, "### 2. Iterative Refactor (with Context Injection)")
     table.insert(lines, "1. Select a function visually.")
-    table.insert(lines, "2. Press `<C-i>` inside an empty Chat popup to start a chat with that code.")
+    table.insert(lines, "2. Press `<C-i>` inside an empty popup to start a chat with that code.")
     table.insert(lines, "3. Type: `Make this more functional style` and hit Enter.")
     table.insert(lines, "4. The model answers. If it needs tweaking, select the new code and press `<C-i>` again.")
     table.insert(lines, "5. Type: `Also add type annotations.`")
@@ -201,14 +202,14 @@ function M.get_help_lines()
     table.insert(lines, "### 3. Local Knowledge Base (RAG)")
     table.insert(lines, "Ask questions against your local markdown notes without sending data to the cloud.")
     table.insert(lines, "1. Ensure you have markdown files in the configured `wiki_folder`.")
-    table.insert(lines, "2. Run `:Chat wiki_index` to map the folder (only needed when files change).")
-    table.insert(lines, "3. Ask a question: `:Chat wiki What are our deployment steps?`")
+    table.insert(lines, "2. Run `:Que wiki_index` to map the folder (only needed when files change).")
+    table.insert(lines, "3. Ask a question: `:Que wiki What are our deployment steps?`")
     table.insert(lines, "4. The LLM will search your local files, find the right context, and synthesize an answer.")
     table.insert(lines, "")
 
     table.insert(lines, "### 4. History Navigation")
-    table.insert(lines, "1. Run `:Chat recall` to view the last assistant answer.")
-    table.insert(lines, "2. Run `:Chat recallq` to view the *prompt* you sent to get that answer.")
+    table.insert(lines, "1. Run `:Que recall` to view the last assistant answer.")
+    table.insert(lines, "2. Run `:Que recallq` to view the *prompt* you sent to get that answer.")
     table.insert(lines, "3. Once any recall/recallq popup is open, press `f` to go forward and `d` to go backward in-place.")
     
     return lines

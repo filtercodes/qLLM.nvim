@@ -298,8 +298,8 @@ function Utils.handle_cmdline_enter()
     local clean_cmdline = cmdline:gsub("^['<,>%%d%%%%%$.%+%-%s;]*", "")
     local cmd, sub = clean_cmdline:match("^(%S+)%s+(%S+)")
 
-    local qllm_cmds = { Chat=1, Gemini=1, Claude=1, Openai=1, Ollama=1, Groq=1 }
-    local is_qllm = cmd and (qllm_cmds[cmd] or cmd:match("^Chat%d$"))
+    local qllm_cmds = { Que=1, Gemini=1, Claude=1, Openai=1, Ollama=1, Groq=1 }
+    local is_qllm = cmd and (qllm_cmds[cmd] or cmd:match("^Pre%d$"))
 
     if is_qllm and (sub == "files" or sub == "scan") then
         -- 1. If completion menu is open, Enter always selects (accepts current match).
