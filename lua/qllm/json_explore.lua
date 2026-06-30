@@ -154,8 +154,13 @@ function M.handle_enter(bufnr)
     end
 end
 
-local function find_folding_index(path)
-    for i, part in ipairs(path) do
+local function find_folding_index(path, bufnr)
+    local start_idx = 1
+    if bufnr then
+        start_idx = (vim.b[bufnr].json_initial_path_len or 0) + 1
+    end
+    for i = start_idx, #path do
+        local part = path[i]
         if type(part) == "number" or (type(part) == "string" and tonumber(part) ~= nil) then
             return i
         end
@@ -171,7 +176,7 @@ function M.navigate(bufnr, direction)
         return
     end
 
-    local fold_idx = find_folding_index(path)
+    local fold_idx = find_folding_index(path, bufnr)
     if not fold_idx then
         vim.notify("json_explore: No numeric folding index found in current path.", vim.log.levels.WARN, { title = "qLLM" })
         return
@@ -265,6 +270,7 @@ function M.start_explorer(filepath, initial_path, bufnr)
     end)
 
     vim.b[ui_bufnr].json_path = initial_path or {}
+    vim.b[ui_bufnr].json_initial_path_len = #(initial_path or {})
     vim.b[ui_bufnr].json_file = expanded
     vim.b[ui_bufnr].qllm_metadata = { command = "json_explore" }
 

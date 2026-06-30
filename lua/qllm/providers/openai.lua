@@ -2,7 +2,7 @@ local curl = require("plenary.curl")
 local Render = require("qllm.template_render")
 local Utils = require("qllm.utils")
 local Api = require("qllm.api")
-local History = require("qllm.history")
+local Queue = require("qllm.queue")
 local Ui = require("qllm.ui")
 local Logger = require("qllm.logger")
 
@@ -11,7 +11,7 @@ OpenAIProvider = {}
 OpenAIProvider.has_streaming = true
 
 function OpenAIProvider.make_request(command, cmd_opts, command_args, text_selection, bufnr)
-    local past_messages = History.get_messages(bufnr)
+    local past_messages = Queue.get_messages(bufnr)
     local new_user_message_text = Render.render(command, cmd_opts.user_message_template, command_args, text_selection, cmd_opts)
     local system_message_text = Render.render(command, cmd_opts.system_message_template, command_args, text_selection, cmd_opts)
 
@@ -28,12 +28,12 @@ function OpenAIProvider.make_request(command, cmd_opts, command_args, text_selec
         table.insert(messages_for_api, {role=system_role, content=system_message_text})
     end
 
-    local include_history = true
-    if cmd_opts.is_search_command and vim.g.qllm_ground_with_history == false then
-        include_history = false
+    local include_queue = true
+    if cmd_opts.is_search_command and vim.g.qllm_ground_include_queue == false then
+        include_queue = false
     end
 
-    if include_history then
+    if include_queue then
         for _, msg in ipairs(past_messages) do
             table.insert(messages_for_api, msg)
         end
@@ -167,8 +167,8 @@ function OpenAIProvider.handle_response(json, user_message_text, cb, bufnr)
         end
 
         if response_text ~= "" then
-            History.add_message(bufnr, "user", user_message_text)
-            History.add_message(bufnr, "assistant", response_text)
+            Queue.add_message(bufnr, "user", user_message_text)
+            Queue.add_message(bufnr, "assistant", response_text)
             if vim.g.qllm_clear_visual_selection and vim.api.nvim_buf_is_valid(bufnr) then
                 vim.api.nvim_buf_set_mark(bufnr, "<", 0, 0, {})
                 vim.api.nvim_buf_set_mark(bufnr, ">", 0, 0, {})
@@ -185,9 +185,9 @@ function OpenAIProvider.handle_response(json, user_message_text, cb, bufnr)
             if type(response_text) ~= "string" or response_text == "" then
                 print("Error: No response text " .. type(response_text))
             else
-                -- Add history (Clean: only the answer)
-                History.add_message(bufnr, "user", user_message_text)
-                History.add_message(bufnr, "assistant", response_text)
+                -- Add queue (Clean: only the answer)
+                Queue.add_message(bufnr, "user", user_message_text)
+                Queue.add_message(bufnr, "assistant", response_text)
 
                 if vim.g.qllm_clear_visual_selection and vim.api.nvim_buf_is_valid(bufnr) then
                     vim.api.nvim_buf_set_mark(bufnr, "<", 0, 0, {})
@@ -213,7 +213,7 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
     Api.run_started_hook()
 
     -- Extract command for logging and remove from strict payload
-    local command_name = payload.command or "chat"
+    local command_name = payload.command or "query"
 
     -- Build a clean payload copy WITHOUT the command field
     -- payload.command = nil
@@ -307,11 +307,11 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
                                 json.type == "response.reasoning.delta" or
                                 json.type == "reasoning.delta" or
                                 json.type == "response.reasoning_text.delta") and json.delta then
-                            -- API-NATIVE TRUST: Stream reasoning in sequence, but keep out of history
+                            -- API-NATIVE TRUST: Stream reasoning in sequence, but keep out of queue
                             cb.on_chunk(json.delta, true)
 
                         elseif json.reasoning_delta then
-                            -- Catch reasoning_delta field directly if present (keep out of history)
+                            -- Catch reasoning_delta field directly if present (keep out of queue)
                             cb.on_chunk(json.reasoning_delta, true)
 
                         -- 4. Handle Completion & Citations
@@ -334,7 +334,7 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
                             end
                             if #sources > 0 and vim.g.qllm_show_search_sources then
                                 local sources_text = "\n\n**Sources:**\n" .. table.concat(sources, "\n")
-                                -- Sources are added to history
+                                -- Sources are added to queue
                                 full_text = full_text .. sources_text
                                 cb.on_chunk(sources_text, false)
                             end
@@ -344,7 +344,7 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
                             local delta = json.choices[1].delta
                             -- Handle Reasoning/Thinking (e.g. o1/o3 models)
                             if delta.reasoning_content then
-                                -- Stream thinking but keep out of history
+                                -- Stream thinking but keep out of queue
                                 cb.on_chunk(delta.reasoning_content, true)
                             end
                             -- Handle Actual Answer

@@ -2,7 +2,7 @@ local Commands = require("qllm.commands")
 local CommandsList = require("qllm.commands_list")
 local Utils = require("qllm.utils")
 local Ui = require("qllm.ui")
-local History = require("qllm.history")
+local Queue = require("qllm.queue")
 local qllmModule = {}
 
 local function has_command_args(opts)
@@ -22,24 +22,24 @@ function qllmModule.run_cmd(opts)
     local bufnr = nil
     local is_ui_window = false
 
-    -- Determine Context and which buffer is History Owner
+    -- Determine Context and which buffer is Queue Owner
     local current_bufnr = vim.api.nvim_get_current_buf()
     local owner_bufnr = Ui.get_owner_bufnr(current_bufnr)
 
     if owner_bufnr then
         is_ui_window = true
-        bufnr = owner_bufnr -- History is always the owner's
+        bufnr = owner_bufnr -- Queue is always the owner's
     else
-        bufnr = current_bufnr -- History is the current buffer's
+        bufnr = current_bufnr -- Queue is the current buffer's
     end
 
     -- Handle `clear` as a special case that doesn't need validation
     -- 1. HANDLE UTILITY COMMANDS (Early Return)
     if command == "clear" and #opts.fargs == 1 then
-        History.clear_history(bufnr)
+        Queue.clear_queue(bufnr)
         vim.b[bufnr].qllm_metadata = nil
         Ui.close_active_popup(current_bufnr)
-        vim.notify("Chat history cleared for this buffer.", vim.log.levels.INFO, { title = "qLLM" })
+        vim.notify("Chat queue cleared for this buffer.", vim.log.levels.INFO, { title = "qLLM" })
         return -- Stop all further processing
     end
 
@@ -69,7 +69,7 @@ function qllmModule.run_cmd(opts)
     end
 
     if is_recall_action then
-        local last_response, model, cmd, cursor_pos, question = History.get_last_response(bufnr, recall_offset)
+        local last_response, model, cmd, cursor_pos, question = Queue.get_last_response(bufnr, recall_offset)
         local display_text = show_question and question or last_response
 
         if display_text then
@@ -83,18 +83,18 @@ function qllmModule.run_cmd(opts)
             Ui.popup(Utils.parse_lines(display_text), vim.g.qllm_text_popup_filetype, bufnr, start_row, start_col, end_row, end_col, (not show_question and cursor_pos or nil))
         else
             local msg = show_question and "question" or "assistant response"
-            vim.notify(string.format("No %s found at history index %d for this buffer.", msg, recall_offset), vim.log.levels.WARN, { title = "qLLM" })
+            vim.notify(string.format("No %s found at queue index %d for this buffer.", msg, recall_offset), vim.log.levels.WARN, { title = "qLLM" })
         end
         return
     end
 
     local is_undo = command == "undo"
     if is_undo and #opts.fargs == 1 then
-        local success = History.undo_last_exchange(bufnr)
+        local success = Queue.undo_last_exchange(bufnr)
         if success then
-            vim.notify("Last conversation exchange removed from history.", vim.log.levels.INFO, { title = "qLLM" })
+            vim.notify("Last conversation exchange removed from queue.", vim.log.levels.INFO, { title = "qLLM" })
         else
-            vim.notify("No history to undo.", vim.log.levels.WARN, { title = "qLLM" })
+            vim.notify("No queue to undo.", vim.log.levels.WARN, { title = "qLLM" })
         end
         return
     end
@@ -112,12 +112,12 @@ function qllmModule.run_cmd(opts)
         return ui_elem
     end
 
-    -- hlist: show all buffers that have chat history
-    if command == "hlist" and #opts.fargs == 1 then
-        local entries = History.list_history_buffers()
+    -- qlist: show all buffers that have chat queue
+    if command == "qlist" and #opts.fargs == 1 then
+        local entries = Queue.list_queue_buffers()
 
         if #entries == 0 then
-            vim.notify("No chat history exists for any buffer.", vim.log.levels.INFO, { title = "qLLM" })
+            vim.notify("No chat queue exists for any buffer.", vim.log.levels.INFO, { title = "qLLM" })
             return
         end
 
@@ -126,7 +126,7 @@ function qllmModule.run_cmd(opts)
         -- otherwise use compact layout so the user sees no ugly error columns.
         local tokens_available = false
         if #entries > 0 then
-            local probe, probe_err = History.get_history_token_count(entries[1].bufnr)
+            local probe, probe_err = Queue.get_queue_token_count(entries[1].bufnr)
             tokens_available = (probe ~= nil)
         end
 
@@ -152,7 +152,7 @@ function qllmModule.run_cmd(opts)
             end
 
             if tokens_available then
-                local tok_count = History.get_history_token_count(e.bufnr) or 0
+                local tok_count = Queue.get_queue_token_count(e.bufnr) or 0
                 table.insert(lines, string.format(
                     "  %-6d│ %-9d│ %-8d│ %-16s│ %s  (%s)",
                     e.bufnr,
@@ -179,11 +179,11 @@ function qllmModule.run_cmd(opts)
         return
     end
 
-    -- hcopy: copy history from a source buffer into the current buffer ─────
-    if command == "hcopy" then
-        --  :Que hcopy          -> copy from alternate buffer (#)
-        --  :Que hcopy 7        -> copy from bufnr 7
-        --  :Que hcopy 7 merge  -> merge instead of replace
+    -- qcopy: copy queue from a source buffer into the current buffer ─────
+    if command == "qcopy" then
+        --  :Que qcopy          -> copy from alternate buffer (#)
+        --  :Que qcopy 7        -> copy from bufnr 7
+        --  :Que qcopy 7 merge  -> merge instead of replace
 
         local src_bufnr
         local merge = false
@@ -199,7 +199,7 @@ function qllmModule.run_cmd(opts)
                     src_bufnr = n
                 else
                     vim.notify(
-                        "hcopy: unrecognised argument '" .. arg .. "'. Usage: hcopy [bufnr] [merge]",
+                        "qcopy: unrecognised argument '" .. arg .. "'. Usage: qcopy [bufnr] [merge]",
                         vim.log.levels.ERROR, { title = "qLLM" }
                     )
                     return
@@ -212,7 +212,7 @@ function qllmModule.run_cmd(opts)
             src_bufnr = vim.fn.bufnr('#')
             if src_bufnr == -1 then
                 vim.notify(
-                    "hcopy: no alternate buffer found. Specify a bufnr explicitly, e.g. :Que hcopy 3",
+                    "qcopy: no alternate buffer found. Specify a bufnr explicitly, e.g. :Que qcopy 3",
                     vim.log.levels.WARN, { title = "qLLM" }
                 )
                 return
@@ -222,16 +222,16 @@ function qllmModule.run_cmd(opts)
         -- Validate source
         if not vim.api.nvim_buf_is_valid(src_bufnr) then
             vim.notify(
-                string.format("hcopy: buffer %d is not valid.", src_bufnr),
+                string.format("qcopy: buffer %d is not valid.", src_bufnr),
                 vim.log.levels.ERROR, { title = "qLLM" }
             )
             return
         end
 
-        local ok, err = History.copy_history(src_bufnr, bufnr, { merge = merge })
+        local ok, err = Queue.copy_queue(src_bufnr, bufnr, { merge = merge })
 
         if ok then
-            local src_entries = History.list_history_buffers()
+            local src_entries = Queue.list_queue_buffers()
             local src_count = 0
             for _, e in ipairs(src_entries) do
                 if e.bufnr == src_bufnr then src_count = e.msg_count; break end
@@ -246,7 +246,7 @@ function qllmModule.run_cmd(opts)
                 vim.log.levels.INFO, { title = "qLLM" }
             )
         else
-            vim.notify("hcopy failed: " .. (err or "unknown error"), vim.log.levels.ERROR, { title = "qLLM" })
+            vim.notify("qcopy failed: " .. (err or "unknown error"), vim.log.levels.ERROR, { title = "qLLM" })
         end
         return
     end
@@ -255,10 +255,10 @@ function qllmModule.run_cmd(opts)
     if command == "heavy" then
         local level = opts.fargs[2]
         if level == "low" or level == "medium" or level == "high" then
-            vim.g.qllm_history_heaviness = level
-            vim.notify("History heaviness set to: " .. level, vim.log.levels.INFO, { title = "qLLM" })
+            vim.g.qllm_queue_heaviness = level
+            vim.notify("Queue heaviness set to: " .. level, vim.log.levels.INFO, { title = "qLLM" })
         else
-            vim.notify("Usage: :Que heavy [low|medium|high]. Current: " .. (vim.g.qllm_history_heaviness or "low"), vim.log.levels.WARN, { title = "qLLM" })
+            vim.notify("Usage: :Que heavy [low|medium|high]. Current: " .. (vim.g.qllm_queue_heaviness or "low"), vim.log.levels.WARN, { title = "qLLM" })
         end
         return
     end
@@ -336,32 +336,32 @@ function qllmModule.run_cmd(opts)
             if vim.fn.filereadable(expanded_path) == 1 then
                 local content = table.concat(vim.fn.readfile(expanded_path), "\n")
 
-                -- Check if this is a qLLM history JSON export
-                local is_history_json = false
+                -- Check if this is a qLLM queue JSON export
+                local is_queue_json = false
                 if filepath:match("%.json$") then
                     local ok, decoded = pcall(vim.fn.json_decode, content)
                     if ok and type(decoded) == "table" and #decoded > 0 and decoded[1].role and decoded[1].content then
-                        is_history_json = true
-                        local current_history = History.get_raw_history(bufnr)
-                        local merge = current_history ~= nil and #current_history > 0
-                        local success, err = History.copy_history(decoded, bufnr, { merge = merge })
+                        is_queue_json = true
+                        local current_queue = Queue.get_raw_queue(bufnr)
+                        local merge = current_queue ~= nil and #current_queue > 0
+                        local success, err = Queue.copy_queue(decoded, bufnr, { merge = merge })
                         if success then
-                            vim.notify(string.format("%s `%s` history into current chat.", merge and "Merged" or "Loaded", filepath), vim.log.levels.INFO, { title = "qLLM" })
+                            vim.notify(string.format("%s `%s` queue into current chat.", merge and "Merged" or "Loaded", filepath), vim.log.levels.INFO, { title = "qLLM" })
                             table.insert(loaded_files, filepath)
                         else
-                            vim.notify("load history error: " .. tostring(err), vim.log.levels.ERROR, { title = "qLLM" })
+                            vim.notify("load queue error: " .. tostring(err), vim.log.levels.ERROR, { title = "qLLM" })
                         end
                     end
                 end
 
-                if not is_history_json then
+                if not is_queue_json then
                     local user_msg = string.format("Here is the contents of the file `%s`:\n\n```%s\n%s\n```",
                         vim.fn.fnamemodify(expanded_path, ":t"),
                         vim.fn.fnamemodify(expanded_path, ":e"),
                         content
                     )
-                    History.add_message(bufnr, "user", user_msg)
-                    History.add_message(bufnr, "assistant", string.format("Understood. I have loaded the contents of `%s` as context.", vim.fn.fnamemodify(expanded_path, ":t")))
+                    Queue.add_message(bufnr, "user", user_msg)
+                    Queue.add_message(bufnr, "assistant", string.format("Understood. I have loaded the contents of `%s` as context.", vim.fn.fnamemodify(expanded_path, ":t")))
                     table.insert(loaded_files, filepath)
                 end
             else
@@ -371,9 +371,9 @@ function qllmModule.run_cmd(opts)
 
         if #loaded_files == 0 and text_selection and text_selection ~= "" then
             local user_msg = "Here is the loaded text selection:\n\n" .. text_selection
-            History.add_message(bufnr, "user", user_msg)
-            History.add_message(bufnr, "assistant", "Understood. I have loaded the selected text as context.")
-            vim.notify("Loaded visual selection into chat history.", vim.log.levels.INFO, { title = "qLLM" })
+            Queue.add_message(bufnr, "user", user_msg)
+            Queue.add_message(bufnr, "assistant", "Understood. I have loaded the selected text as context.")
+            vim.notify("Loaded visual selection into chat queue.", vim.log.levels.INFO, { title = "qLLM" })
             return
         end
 
@@ -387,9 +387,9 @@ function qllmModule.run_cmd(opts)
 
     -- Handle `export` as a special case
     if command == "export" then
-        local raw_history = History.get_raw_history(bufnr)
-        if not raw_history or #raw_history == 0 then
-            vim.notify("export: No chat history to export for this buffer.", vim.log.levels.WARN, { title = "qLLM" })
+        local raw_queue = Queue.get_raw_queue(bufnr)
+        if not raw_queue or #raw_queue == 0 then
+            vim.notify("export: No chat queue to export for this buffer.", vim.log.levels.WARN, { title = "qLLM" })
             return
         end
 
@@ -411,9 +411,9 @@ function qllmModule.run_cmd(opts)
             end
         end
 
-        local success, encoded = pcall(vim.fn.json_encode, raw_history)
+        local success, encoded = pcall(vim.fn.json_encode, raw_queue)
         if not success or not encoded then
-            vim.notify("export: Failed to encode chat history to JSON.", vim.log.levels.ERROR, { title = "qLLM" })
+            vim.notify("export: Failed to encode chat queue to JSON.", vim.log.levels.ERROR, { title = "qLLM" })
             return
         end
 
@@ -421,7 +421,7 @@ function qllmModule.run_cmd(opts)
         if f then
             f:write(encoded)
             f:close()
-            vim.notify(string.format("Exported chat history to: %s", target_path), vim.log.levels.INFO, { title = "qLLM" })
+            vim.notify(string.format("Exported chat queue to: %s", target_path), vim.log.levels.INFO, { title = "qLLM" })
         else
             vim.notify("export: Failed to write file: " .. target_path, vim.log.levels.ERROR, { title = "qLLM" })
         end

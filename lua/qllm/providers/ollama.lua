@@ -2,7 +2,7 @@ local curl = require("plenary.curl")
 local Render = require("qllm.template_render")
 local Utils = require("qllm.utils")
 local Api = require("qllm.api")
-local History = require("qllm.history")
+local Queue = require("qllm.queue")
 local Ui = require("qllm.ui")
 local Logger = require("qllm.logger")
 
@@ -104,8 +104,8 @@ end
 
 
 function OllaMaProvider.make_request(command, cmd_opts, command_args, text_selection, bufnr)
-    -- Get the history of past messages
-    local past_messages = History.get_messages(bufnr)
+    -- Get the queue of past messages
+    local past_messages = Queue.get_messages(bufnr)
 
     -- Render the new user message
     local new_user_message_text = Render.render(command, cmd_opts.user_message_template, command_args, text_selection, cmd_opts)
@@ -163,10 +163,10 @@ function OllaMaProvider.handle_response(json, user_message_text, cb, bufnr)
                 response_text = Utils.strip_thinking_tags(response_text)
 
                 -- TRACE: Log the final response
-                Logger.log_response("ollama", json.command or "chat", response_text)
-                -- Add both user and assistant messages to history at the same time
-                History.add_message(bufnr, "user", user_message_text)
-                History.add_message(bufnr, "assistant", response_text)
+                Logger.log_response("ollama", json.command or "query", response_text)
+                -- Add both user and assistant messages to queue at the same time
+                Queue.add_message(bufnr, "user", user_message_text)
+                Queue.add_message(bufnr, "assistant", response_text)
 
                 if vim.g.qllm_clear_visual_selection and vim.api.nvim_buf_is_valid(bufnr) then
                     vim.api.nvim_buf_set_mark(bufnr, "<", 0, 0, {})
@@ -212,7 +212,7 @@ function OllaMaProvider.make_call(payload, user_message_text, cb, bufnr)
     Api.run_started_hook()
 
     -- TRACE: Log the outgoing request
-    Logger.log_request("ollama", payload.command or "chat", payload)
+    Logger.log_request("ollama", payload.command or "query", payload)
 
     if type(cb) == "table" then
         -- Streaming Mode
@@ -243,7 +243,7 @@ function OllaMaProvider.make_call(payload, user_message_text, cb, bufnr)
                             cb.on_chunk(parser.tag_buffer, parser.is_thinking)
                         end
                         -- TRACE: Log the final response
-                        Logger.log_response("ollama", payload.command or "chat", full_text)
+                        Logger.log_response("ollama", payload.command or "query", full_text)
                         cb.on_complete(full_text)
                         Api.run_finished_hook()
                     end)

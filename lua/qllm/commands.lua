@@ -1,16 +1,16 @@
 local CommandsList = require("qllm.commands_list")
 local Providers = require("qllm.providers")
 local Api = require("qllm.api")
-local History = require("qllm.history")
+local Queue = require("qllm.queue")
 local Utils = require("qllm.utils")
 
 local Commands = {}
 
 function Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts, overrides)
-    -- Allow overriding the user message saved to history (to avoid bloating with large file context)
-    local history_user_message = nil
-    if overrides and overrides.history_user_message then
-        history_user_message = overrides.history_user_message
+    -- Allow overriding the user message saved to queue (to avoid bloating with large file context)
+    local queue_user_message = nil
+    if overrides and overrides.queue_user_message then
+        queue_user_message = overrides.queue_user_message
     end
 
 	if cmd_opts == nil then
@@ -24,7 +24,7 @@ function Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts
 		return
 	end
 
-    -- Tag the buffer with current metadata for status reporting and history
+    -- Tag the buffer with current metadata for status reporting and queue
     vim.b[bufnr or vim.api.nvim_get_current_buf()].qllm_metadata = {
         model = cmd_opts.model,
         command = command
@@ -35,7 +35,7 @@ function Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts
 	end
 
   -- If bufnr is not provided, default to the current buffer.
-  -- This buffer is the "History Owner" for the conversation.
+  -- This buffer is the "Queue Owner" for the conversation.
   bufnr = bufnr or vim.api.nvim_get_current_buf()
 
   local start_row, start_col, end_row, end_col = Utils.get_visual_selection()
@@ -161,10 +161,10 @@ function Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts
               vim.schedule(function()
                   flush_buffer()
                   
-                  -- Add to history only if we have content
+                  -- Add to queue only if we have content
                   if full_text and full_text ~= "" then
-                      History.add_message(bufnr, "user", history_user_message or user_message_text, nil, nil, overrides and overrides.history_metadata)
-                      History.add_message(bufnr, "assistant", full_text)
+                      Queue.add_message(bufnr, "user", queue_user_message or user_message_text, nil, nil, overrides and overrides.queue_metadata)
+                      Queue.add_message(bufnr, "assistant", full_text)
                   end
     
                   if vim.g.qllm_clear_visual_selection and vim.api.nvim_buf_is_valid(bufnr) then
@@ -223,7 +223,7 @@ function Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts
   else
       -- Legacy / Non-Streaming Mode
       local new_callback = function(lines)
-          -- Note: handle_response in providers usually handles history,
+          -- Note: handle_response in providers usually handles queue,
           -- but we pass the override info if possible.
           -- For now, most providers are streaming.
           cmd_opts.callback(lines, bufnr, start_row, start_col, end_row, end_col)

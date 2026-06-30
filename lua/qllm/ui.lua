@@ -4,7 +4,7 @@ local Renderer = require("qllm.renderer")
 
 local Ui = {}
 
--- "History Owner" buffer (e.g., { [popup_bufnr] = owner_bufnr }).
+-- "Queue Owner" buffer (e.g., { [popup_bufnr] = owner_bufnr }).
 local ui_to_owner_map = {}
 
 -- Track which popups are currently active
@@ -62,7 +62,7 @@ vim.api.nvim_create_autocmd("BufEnter", {
     end
 })
 
----Helper to save the current cursor position of a UI popup back to history.
+---Helper to save the current cursor position of a UI popup back to queue.
 function Ui.save_cursor_pos_for_buf(ui_bufnr)
     local info = active_popups[ui_bufnr]
     if not info then return end
@@ -75,8 +75,8 @@ function Ui.save_cursor_pos_for_buf(ui_bufnr)
     local winid = vim.fn.bufwinid(ui_bufnr)
     if winid ~= -1 then
         local cursor = vim.api.nvim_win_get_cursor(winid)
-        local History = require("qllm.history")
-        History.save_cursor_pos(info.owner, recall_index, cursor)
+        local Queue = require("qllm.queue")
+        Queue.save_cursor_pos(info.owner, recall_index, cursor)
     end
 end
 
@@ -330,7 +330,7 @@ function Ui.window_mapping(ui_elem)
         vim.api.nvim_feedkeys("ggVG:Que ", "n", false)
     end, { noremap = false })
 
-    -- Setup buffer-local history traversal for [ and ] if it is a recall/recallq popup
+    -- Setup buffer-local queue traversal for [ and ] if it is a recall/recallq popup
     if vim.b[ui_elem.bufnr].qllm_recall_index ~= nil then
         local function traverse_recall(direction)
             local cur_index = vim.b[ui_elem.bufnr].qllm_recall_index or 1
@@ -344,15 +344,16 @@ function Ui.window_mapping(ui_elem)
             local owner_buf = ui_to_owner_map[ui_elem.bufnr]
             if not owner_buf or not vim.api.nvim_buf_is_valid(owner_buf) then return end
 
-            local History = require("qllm.history")
+            local Queue = require("qllm.queue")
             local Utils = require("qllm.utils")
-            local last_response, model, cmd, cursor_pos, question = History.get_last_response(owner_buf, next_index)
+            local last_response, model, cmd, cursor_pos, question = Queue.get_last_response(owner_buf, next_index)
 
             local show_question = vim.b[ui_elem.bufnr].qllm_show_question
             local display_text = show_question and question or last_response
 
             if display_text then
                 vim.b[ui_elem.bufnr].qllm_recall_index = next_index
+                vim.b[ui_elem.bufnr].qllm_metadata = { model = model, command = cmd }
                 vim.b[owner_buf].qllm_recall_index = next_index
                 vim.b[owner_buf].qllm_metadata = { model = model, command = cmd }
 

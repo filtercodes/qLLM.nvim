@@ -86,7 +86,7 @@ Commands are logically categorized into **Action** (direct text generation or ed
 
 | Command      | Input | Description |
 |--------------|---- |------------------------------------|
-| chat  |  prompt and/or text selection | General chat command - Passes the given prompt to LLM and returns the response in a popup. |
+| query  |  prompt and/or text selection | General query - Passes the given prompt to LLM and returns the response in a popup. |
 | search |  prompt and/or text selection | Triggers a web search (grounding) before answering to provide up-to-date information. Shows the grounded answer in a popup. |
 
 ### Code related commands
@@ -124,14 +124,14 @@ Commands are logically categorized into **Action** (direct text generation or ed
 
 | Command      | Input | Description |
 |--------------|---- |------------------------------------|
-| recall  |  none or number | Displays the last assistant response from the chat history in a popup without altering the history. Optionally accept a number to go further back (e.g., `:Que recall 2`). |
-| undo  |  none | Removes the last exchange (prompt and the assistant's response) from the chat history. Useful for reverting a bad conversation turn. |
+| recall  |  none or number | Displays the last assistant response from the chat queue in a popup without altering the queue. Optionally accept a number to go further back (e.g., `:Que recall 2`). |
+| undo  |  none | Removes the last exchange (prompt and the assistant's response) from the chat queue. Useful for reverting a bad conversation turn. |
 | clear  |  none | Completely clears the conversation to start fresh. |
-| hlist  |  none | Shows the information about conversation history: buffer number, the number of messages (and tokens if tiktoken is installed), last model, name. |
-| hcopy  |  number and "merge" | Copy entire buffer history to another buffer. If passing merge command after buffer number, both buffers will be merged. |
-| load   |  filepath or selection | Load text selection or file content into the chat history. If the file is a qLLM exported JSON history, it will restore or merge it. |
-| export |  filepath or none | Export the current chat history to a JSON file. If filepath is omitted, it auto-generates a filename based on the project folder and date. |
-| heavy  |  "low", "medium", or "high" | Configures the heaviness level of the chat history. Dynamically changes how much context (files, selections, search results) is preserved in subsequent turns. |
+| qlist  |  none | Shows the information about conversation queue: buffer number, the number of messages (and tokens if tiktoken is installed), last model, name. |
+| qcopy  |  number and "merge" | Copy entire buffer queue to another buffer. If passing merge command after buffer number, both buffers will be merged. |
+| load   |  filepath or selection | Load text selection or file content into the chat queue. If the file is a qLLM exported JSON queue, it will restore or merge it. |
+| export |  filepath or none | Export the current chat queue to a JSON file. If filepath is omitted, it auto-generates a filename based on the project folder and date. |
+| heavy  |  "low", "medium", or "high" | Configures the heaviness level of the chat queue. Dynamically changes how much context (files, selections, search results) is preserved in subsequent turns. |
 
 
 ### Other
@@ -225,12 +225,12 @@ vim.g.qllm_commands_defaults1 = {
 
 `vim.g.qllm_show_search_sources` - Boolean (Default: `true`). Show or hide the links/citations used by LLM during a search in the popup UI. If you are using a smaller model you can set it to `false` to deal with strict context limits.
 
-`vim.g.qllm_ground_with_history` - Boolean (Default: `false`). If you want to send previous conversation history to the grounding model set it to `true`. This might be useful for model to pick up more info about the search term from the context, but also conversation history might confuse smaller local models or create biased grounding.
+`vim.g.qllm_ground_include_queue` - Boolean (Default: `false`). If you want to send previous conversation queue to the grounding model set it to `true`. This might be useful for model to pick up more info about the search term from the context, but also conversation queue might confuse smaller local models or create biased grounding.
 
 ```lua
 vim.g.qllm_search_provider = "local_grounding"
 vim.g.qllm_show_search_sources = true
-vim.g.qllm_ground_with_history = true
+vim.g.qllm_ground_include_queue = true
 ```
 
 Note that `"local_grounding"` requires `TAVILY_API_KEY` as an environment variable! Local Ollama model uses internet search results from [Tavily](https://app.tavily.com/home) to construct a grounded answer.
@@ -240,7 +240,7 @@ Note that `"local_grounding"` requires `TAVILY_API_KEY` as an environment variab
 qLLM includes a local Knowledge Base system designed to turn your Markdown notes into a compounding "Wiki IDE." This architecture is inspired by the **[LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)** concept proposed by Andrej Karpathy, implementing a dual-layer retrieval system (Map and Territory) for high-accuracy semantic discovery.
 
 ### Context commands (project scope)
-These are commands to inject arbitrary local project context or search results into an LLM request (without bloating the chat history).
+These are commands to inject arbitrary local project context or search results into an LLM request (without bloating the chat queue).
 
 *   If you have manually initialized the project with `:Que init`, qLLM creates an architectural map (`qLLM.md`). This map gets added to the background context of the `files`, `scan`, and `explain` commands to give an LLM better project awareness.
 
@@ -248,7 +248,7 @@ These are commands to inject arbitrary local project context or search results i
 *   `:Que files [file1.py file2.js *.md] prompt`: Reads multiple local files (supports wildcards and escaped quotes) and passes their content as the context for the prompt.
     *   Note: If no prompt is provided, it defaults to the `explain` command for all files.
 *   `:Que scan [src/*.lua] query -- prompt`: Performs a fast literal search across local project files for the `"query"`, automatically expands matches to their containing code blocks using Tree-sitter, and sends the relevant chunks to the LLM for analysis.
-    *   Note: If no prompt is provided, it displays the search results in a popup without calling the LLM. The result goes to the chat history so the next LLM inference can see it.
+    *   Note: If no prompt is provided, it displays the search results in a popup without calling the LLM. The result goes to the chat queue so the next LLM inference can see it.
 *   `:Que tree <function_or_variable>`: Queries the call graph or reference map for the specified function or variable. It parses the indexed map and walks symbol connections to trace upward callers and downward callees recursively.
 *   `:Que deadcode`: Runs static analysis on the mapped codebase to identify unused/disconnected functions, unfinished stubs (including empty functions and those containing `TODO`/`FIXME` tags), and unused local variables. Selecting any detected item opens the file at the exact coordinate.
     *   Note: Exported public APIs, entry points, or dynamically registered callback functions may be reported as disconnected (having 0 callers) because they are invoked externally or dynamically.
@@ -335,9 +335,9 @@ vim.g.qllm_kb_opts = {
 
 *Note: The `sqlite3` CLI must also be available in `$PATH` for the Knowledge Base to function.*
 
-## Chat History (short-term memory)
+## Chat Queue (short-term memory)
 
-At the high level, context pipeline resembles a queue hence the name qLLM (queue LLM). It’s a First In First Out conversation pipeline that automatically manages itself. You can tune its behavior using the `vim.g.qllm_history_opts` table.
+At the high level, context pipeline resembles a queue hence the name qLLM (queue LLM). It’s a First In First Out conversation pipeline that automatically manages itself. You can tune its behavior using the `vim.g.qllm_queue_opts` table.
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -347,21 +347,21 @@ At the high level, context pipeline resembles a queue hence the name qLLM (queue
 | summarize_percent | 50 | What percentage of messages will be summarized. Default is 50%. |
 | max_messages | 50 | Total messages to retain before summarizing older ones. |
 | max_tokens | 24000 | Number of tokens to reach for summarization logic to trigger. |
-| time_based_expiry | false | If `true`, history automatically clears after the `timeout`. |
-| timeout | 1800 | Inactivity window (in seconds) before history expires (if `time_based_expiry` set to `true`). |
+| time_based_expiry | false | If `true`, queue automatically clears after the `timeout`. |
+| timeout | 1800 | Inactivity window (in seconds) before queue expires (if `time_based_expiry` set to `true`). |
 
 `summarize_style` takes string as an input. Options are:
 - `"none"`      -- no summarization, sliding window only
 - `"messages"`  -- summarize when message count exceeds `max_messages`
 - `"tokens"`    -- summarize when token count exceeds `max_tokens`
 
-*Note: Python3 and `tiktoken` installed are requirements for using token based history management.
+*Note: Python3 and `tiktoken` installed are requirements for using token based queue management.
 
 Example configuration (`init.lua`):
 
 ```lua
--- Modern history setup with background summarization
-vim.g.qllm_history_opts = {
+-- Modern queue setup with background summarization
+vim.g.qllm_queue_opts = {
     summarize_style = "tokens",
     max_tokens = 80000,             -- 80k should be a safe zone for most modern models
     summarize_percent = 30,         -- Rather subtle summarise only 30% of oldest messages
@@ -371,47 +371,47 @@ vim.g.qllm_history_opts = {
 }
 ```
 
-### Variable History Heaviness
+### Variable Queue Heaviness
 
-To prevent the LLM context from cluttering quickly or sending stale versions of files, use the **Variable History Heaviness**. You can dynamically control the amount of context (such as resolved file contents, visual selections, and search results) from the commands that is carried forward into subsequent conversation turns.
+To prevent the LLM context from cluttering quickly or sending stale versions of files, use the **Variable Queue Heaviness**. You can dynamically control the amount of context (such as resolved file contents, visual selections, and search results) from the commands that is carried forward into subsequent conversation turns.
 
-Default, heaviness setting is `"low"`. It can be set globally via `vim.g.qllm_history_heaviness`, and there is also a command to change it dynamically when required using the `:Que heavy low|medium|high`.
+Default, heaviness setting is `"low"`. It can be set globally via `vim.g.qllm_queue_heaviness`, and there is also a command to change it dynamically when required using the `:Que heavy low|medium|high`.
 
 #### Heaviness levels:
-- **`low` (Default)**: Only the clean query prompt/instruction (e.g., `"FILES: explain this in [history.lua]"`) is recorded in the conversation history. Visual selection code, Tavily search results, and raw file contents are discarded on subsequent turns. This is token-efficient and prevents the LLM from referencing stale, outdated code versions as you modify files.
-- **`medium`**: Visual selections and search results are preserved and re-sent in history, but **full file contents are excluded**. This is ideal for active, selection-based coding sessions without buffer-bloat.
+- **`low` (Default)**: Only the clean query prompt/instruction (e.g., `"FILES: explain this in [queue.lua]"`) is recorded in the conversation queue. Visual selection code, Tavily search results, and raw file contents are discarded on subsequent turns. This is token-efficient and prevents the LLM from referencing stale, outdated code versions as you modify files.
+- **`medium`**: Visual selections and search results are preserved and re-sent in queue, but **full file contents are excluded**. This is good for active, selection-based coding sessions without buffer-bloat.
 - **`high`**: Everything (including raw file contents, selections, and search results) is appended to subsequent turns. This provides the LLM with complete memory of the input, at the cost of higher token consumption and potential confusion if file contents change.
 
 The idea is that some context is preservable and static with high importance and requires high heaviness, while other context might be in the process of change or completely non-relevant for the major context of the conversation. Changing the heaviness level on demand, alows for higher granularity in context managent.
 
-### History navigation
+### Queue navigation
 
 View previous assistant responses in a popup window using keyboard shortcuts:
 
 ```lua
 local qllm = require("qllm")
 
--- Map keys 1-9 to view specific history items in a popup (e.g., <leader>q1 is last, q2 is one before, etc.)
+-- Map keys 1-9 to view specific queue items in a popup (e.g., <leader>q1 is last, q2 is one before, etc.)
 for i = 1, 9 do
     vim.keymap.set("n", "<leader>q" .. i, function() qllm.recall(i) end)
 end
 
--- Other history actions
+-- Other queue actions
 vim.keymap.set("n", "<leader>qu", function() qllm.undo() end)
 vim.keymap.set("n", "<leader>qc", function() qllm.clear() end)
 ```
 
-To traverse the history without closing and reopening the window:
+To traverse the queue without closing and reopening the window:
 *   Press `f` to go forward (toward the most recent response/question).
 *   Press `d` to go backward (toward older responses/questions).
 
 ### Copy and Merge
 
-To copy conversation history from one buffer to another use the following workflow.
+To copy conversation queue from one buffer to another use the following workflow.
 - You're in buf 3, had a long chat.
 - Run the command:
 ```
-:Que hlist
+:Que qlist
 ```
 - It will list the current conversation information in a popup list.
 
@@ -421,32 +421,32 @@ To copy conversation history from one buffer to another use the following workfl
 | 1 | 4 | gpt-4o | utils.py  (1h ago) |
 
 - Go to the new buffer
-`:enew`
-- Now in the new buffer, blank slate, run any of the `hcopy` variants:
+- `:enew`
+- Now in the new buffer, blank slate, run any of the `qcopy` variants:
 ```
-:Que hcopy          -- copies from buf 3 (alternate buffer, the one you just left)
-:Que hcopy 3        -- explicit — same result
-:Que hcopy 3 merge  -- if buf 5 already had some history, append buf 3's on it
+:Que qcopy          -- copies from buf 3 (alternate buffer, the one you just left)
+:Que qcopy 3        -- explicit — same result
+:Que qcopy 3 merge  -- if buf 5 already had some queue, append buf 3's on it
 ```
 
 The **alternate buffer** default (`vim.fn.bufnr('#')`) covers the most natural case — you just left the buffer you want to branch from, so number lookup is not needed at all.
 
 ### Exporting and Importing Sessions
 
-You can save and restore conversation histories to share them, backup your work, or resume them later using `export` and `load`:
+You can save and restore conversation queues to share them, backup your work, or resume them later using `export` and `load`:
 
-- **Exporting**: Save the active buffer's chat history to a JSON file:
+- **Exporting**: Save the active buffer's chat queue to a JSON file:
   ```vim
   :Que export                 -- saves to qllm_<project>_<date>.json in the current directory
   :Que export my_session.json -- saves to the specified file path
   ```
-- **Loading**: Load any file, visual selection, or exported history:
+- **Loading**: Load any file, visual selection, or exported queue:
   ```vim
-  :Que load my_session.json   -- detects the exported history format and restores or merges it
+  :Que load my_session.json   -- detects the exported queue format and restores or merges it
   :Que load rules.md          -- treats as a normal text file and loads its contents as context
   ```
 
-If you load a text file or visual selection, it is appended to the chat history as a user message and balanced with a mock assistant acknowledgment to maintain role alternation. If you load an exported `qllm` history JSON file, it will restore the history exactly as it was. If the active buffer already has history, the imported messages are merged/appended onto the end of the current conversation (exactly like `hcopy merge` does).
+If you load a text file or visual selection, it is appended to the chat queue as a user message and balanced with a mock assistant acknowledgment to maintain role alternation. If you load an exported `qllm` queue JSON file, it will restore the queue exactly as it was. If the active buffer already has queue, the imported messages are merged/appended onto the end of the current conversation (exactly like `qcopy merge` does).erge` does).
 
 ### JSON Explorer
 
@@ -466,7 +466,7 @@ To inspect structured data and load specific keys or values into the LLM context
   - While inside the JSON explorer popup, you can press `f` (forward) or `d` (backward) to automatically increment or decrement that index and page through different records (e.g., transitions to `users.2.name`, `users.3.name`) while preserving your deep nested position!
   - **Multiple / Nested Indices**: Only one folding point is active at a time. If you have nested coordinates (e.g. `departments.2.employees.5.salary`), the leftmost index (`2`) is traversed. To target a deeper index dynamically, change the exploration root when launching the command (e.g. `:Que json config.json departments.2` leaves `2` behind in the root, making the employee index `5` the active folding point).
 - **Context Injection**:
-  - Since the explorer is a standard buffer, you can visually select any keys or values displayed and run `:'<,'>Que load` to dump them into the active conversation history.
+  - Since the explorer is a standard buffer, you can visually select any keys or values displayed and run `:'<,'>Que load` to dump them into the active conversation queue.
 
 ## Popup options
 
@@ -619,7 +619,7 @@ vim.g.qllm_hooks = {
 
 ### Lualine status component
 
-There is a convenience function `get_status` to add a status component to lualine. This function provides an animated progress spinner while a request is running, followed by the name of the last command and the active LLM model (e.g., `⠋ chat  🤖 qwen3.6:27b`).
+There is a convenience function `get_status` to add a status component to lualine. This function provides an animated progress spinner while a request is running, followed by the name of the last command and the active LLM model (e.g., `⠋ query  🤖 qwen3.6:27b`).
 
 ```lua
 local qllmModule = require("qllm")

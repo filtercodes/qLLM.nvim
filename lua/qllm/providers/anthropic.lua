@@ -2,7 +2,7 @@ local curl = require("plenary.curl")
 local Render = require("qllm.template_render")
 local Utils = require("qllm.utils")
 local Api = require("qllm.api")
-local History = require("qllm.history")
+local Queue = require("qllm.queue")
 local Ui = require("qllm.ui")
 local Logger = require("qllm.logger")
 
@@ -11,18 +11,18 @@ AnthropicProvider = {}
 AnthropicProvider.has_streaming = true
 
 function AnthropicProvider.make_request(command, cmd_opts, command_args, text_selection, bufnr)
-    local past_messages = History.get_messages(bufnr)
+    local past_messages = Queue.get_messages(bufnr)
     local new_user_message_text = Render.render(command, cmd_opts.user_message_template, command_args, text_selection, cmd_opts)
     local system_message = Render.render(command, cmd_opts.system_message_template, command_args, text_selection,
         cmd_opts)
 
     local messages_for_api = {}
-    local include_history = true
-    if cmd_opts.is_search_command and vim.g.qllm_ground_with_history == false then
-        include_history = false
+    local include_queue = true
+    if cmd_opts.is_search_command and vim.g.qllm_ground_include_queue == false then
+        include_queue = false
     end
 
-    if include_history then
+    if include_queue then
         for _, msg in ipairs(past_messages) do
             table.insert(messages_for_api, msg)
         end
@@ -114,7 +114,7 @@ function AnthropicProvider.make_call(payload, user_message_text, cb, bufnr)
     Api.run_started_hook()
 
     -- TRACE: Log the outgoing request
-    Logger.log_request("anthropic", payload.command or "chat", payload)
+    Logger.log_request("anthropic", payload.command or "query", payload)
 
     if type(cb) == "table" then
         local payload_str = vim.fn.json_encode(payload)
@@ -146,7 +146,7 @@ function AnthropicProvider.make_call(payload, user_message_text, cb, bufnr)
                             cb.on_chunk(sources_text, false)
                         end
                         -- TRACE: Log the final response
-                        Logger.log_response("anthropic", payload.command or "chat", full_text)
+                        Logger.log_response("anthropic", payload.command or "query", full_text)
                         cb.on_complete(full_text)
                         Api.run_finished_hook()
                     end)
@@ -207,7 +207,7 @@ function AnthropicProvider.make_call(payload, user_message_text, cb, bufnr)
                                     full_text = full_text .. json.delta.text
                                     cb.on_chunk(json.delta.text, false)
                                 elseif json.delta.type == "thinking_delta" and json.delta.thinking then
-                                    -- Thinking is NOT added to full_text (clean history)
+                                    -- Thinking is NOT added to full_text (clean queue)
                                     cb.on_chunk(json.delta.thinking, true)
                                 end
                             end
@@ -248,8 +248,8 @@ function AnthropicProvider.make_call(payload, user_message_text, cb, bufnr)
                             for _, b in ipairs(json.content) do if b.text then txt = txt .. b.text end end
                             -- TRACE: Log the final response
                             Logger.log_response("anthropic", "legacy", txt)
-                            History.add_message(bufnr, "user", user_message_text)
-                            History.add_message(bufnr, "assistant", txt)
+                            Queue.add_message(bufnr, "user", user_message_text)
+                            Queue.add_message(bufnr, "assistant", txt)
                             cb(Utils.parse_lines(txt))
                         end
                     end

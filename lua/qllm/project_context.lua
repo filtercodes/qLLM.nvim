@@ -93,7 +93,7 @@ IMPORTANT: Output your response in Markdown format. Start with a metadata block 
     local model_name = kb_opts.context_model or kb_opts.project_model
     if not model_name then
         local CommandsList = require("qllm.commands_list")
-        local provider_opts = CommandsList.get_cmd_opts("chat", { provider = provider_name })
+        local provider_opts = CommandsList.get_cmd_opts("query", { provider = provider_name })
         model_name = provider_opts.model
     end
 
@@ -246,12 +246,12 @@ function M.show_tree(query, bufnr)
     local Ui = require("qllm.ui")
     Ui.popup(output_lines, "markdown", bufnr)
 
-    -- Save to history based on heaviness
-    local heaviness = vim.g.qllm_history_heaviness or "low"
+    -- Save to queue based on heaviness
+    local heaviness = vim.g.qllm_queue_heaviness or "low"
     if heaviness == "medium" or heaviness == "high" then
-        local History = require("qllm.history")
-        History.add_message(bufnr, "user", "tree " .. query)
-        History.add_message(bufnr, "assistant", table.concat(output_lines, "\n"), nil, "tree")
+        local Queue = require("qllm.queue")
+        Queue.add_message(bufnr, "user", "tree " .. query)
+        Queue.add_message(bufnr, "assistant", table.concat(output_lines, "\n"), nil, "tree")
     end
 end
 
@@ -272,11 +272,11 @@ function M.show_dead_code(bufnr)
     local Ui = require("qllm.ui")
     Ui.popup(output_lines, "markdown", bufnr)
 
-    local heaviness = vim.g.qllm_history_heaviness or "low"
+    local heaviness = vim.g.qllm_queue_heaviness or "low"
     if heaviness == "medium" or heaviness == "high" then
-        local History = require("qllm.history")
-        History.add_message(bufnr, "user", "deadcode")
-        History.add_message(bufnr, "assistant", table.concat(output_lines, "\n"), nil, "deadcode")
+        local Queue = require("qllm.queue")
+        Queue.add_message(bufnr, "user", "deadcode")
+        Queue.add_message(bufnr, "assistant", table.concat(output_lines, "\n"), nil, "deadcode")
     end
 end
 

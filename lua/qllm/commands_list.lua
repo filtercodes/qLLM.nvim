@@ -87,7 +87,7 @@ function CommandsList.get_cmd_opts(cmd, overrides)
         end
         opts = vim.tbl_extend("force", opts, flat_keys)
 
-        -- Apply Base Command Overrides (The templates like 'chat', 'explain', etc.)
+        -- Apply Base Command Overrides (The templates like 'query', 'explain', etc.)
         local cmd_overrides = config_table[cmd]
         if cmd_overrides and type(cmd_overrides) == "table" then
             opts = vim.tbl_extend("force", opts, cmd_overrides)
@@ -205,7 +205,7 @@ function CommandsList.complete(ArgLead, CmdLine, CursorPos)
 
     -- If we are still typing the first argument (sub-command)
     if #parts == 1 or (#parts == 2 and not ends_with_space) then
-        local cmd = { "heavy", "hcopy", "hlist", "undo", "wiki_index", "wiki_lint", "wiki_save", "init", "tree", "deadcode", "recall", "recallq", "clear", "help", "load", "export", "json" }
+        local cmd = { "heavy", "qcopy", "qlist", "undo", "wiki_index", "wiki_lint", "wiki_save", "init", "tree", "deadcode", "recall", "recallq", "clear", "help", "load", "export", "json" }
         for k, v in pairs(vim.g.qllm_commands_defaults or {}) do
             if type(v) == "table" then
                 table.insert(cmd, k)

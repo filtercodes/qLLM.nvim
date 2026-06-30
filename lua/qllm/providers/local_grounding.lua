@@ -2,7 +2,7 @@ local curl = require("plenary.curl")
 local Render = require("qllm.template_render")
 local Utils = require("qllm.utils")
 local Api = require("qllm.api")
-local History = require("qllm.history")
+local Queue = require("qllm.queue")
 
 local LocalGroundingProvider = {}
 
@@ -104,17 +104,17 @@ function LocalGroundingProvider.make_call(payload, user_message_text, cb, bufnr,
         end
 
         if overrides then
-            if not overrides.history_metadata then
-                overrides.history_metadata = {}
+            if not overrides.queue_metadata then
+                overrides.queue_metadata = {}
             end
-            overrides.history_metadata.search_results = context_text
+            overrides.queue_metadata.search_results = context_text
         end
 
         -- Construct LLM Prompt
-        local past_messages = History.get_messages(bufnr)
+        local past_messages = Queue.get_messages(bufnr)
         local messages = {}
         
-        if vim.g.qllm_ground_with_history ~= false then
+        if vim.g.qllm_ground_include_queue ~= false then
             for _, msg in ipairs(past_messages) do
                 table.insert(messages, msg)
             end

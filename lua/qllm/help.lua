@@ -4,7 +4,7 @@ local Ui = require("qllm.ui")
 local M = {}
 
 local command_descriptions = {
-    chat = "General purpose chat assistant. Use this for general questions, brainstorming, or when no code is selected. It maintains conversation history.",
+    query = "General purpose chat assistant. Use this for general questions, brainstorming, or when no code is selected. It maintains conversation queue.",
     search = "Triggers a web search (grounding) before answering to provide up-to-date information and reduce LLM hallucinations.",
     complete = "Completes the current code selection. Useful for finishing a function or block of code based on the context provided by the selection.",
     edit = "Modifies the selected code based on your instructions. Use this to refactor, change logic, or apply specific transformations to existing code.",
@@ -24,13 +24,13 @@ local command_descriptions = {
     debug = "Analyzes the selected code for potential bugs or issues. It acts as a static analysis tool to spot logical errors or common pitfalls.",
     recall = "Displays the last response from the assistant in a popup window. Accepts an optional number to go further back (e.g., `:Que recall 2` for the second-to-last response).",
     recallq = "Displays the last prompt/question sent to the assistant in a popup window. Accepts an optional index (e.g., `:Que recallq 2`).",
-    undo = "Removes the last exchange (your prompt and the assistant's response) from the chat history. Useful for undoing a bad conversation turn.",
-    clear = "Clears the chat history for the current buffer. This resets the conversation context.",
+    undo = "Removes the last exchange (your prompt and the assistant's response) from the chat queue. Useful for undoing a bad conversation turn.",
+    clear = "Clears the chat queue for the current buffer. This resets the conversation context.",
     help = "Displays this help file, listing available commands, keybindings, and configuration options.",
-    heavy = "Configures the heaviness level of the chat history. Usage: `:Que heavy [low|medium|high]`. Defaults to low.",
-    hcopy = "Copies chat history from a source buffer into the current buffer. Usage: `:Que hcopy [src_bufnr] [merge]`.",
-    hlist = "Lists all buffers with active chat history in a popup table.",
-    export = "Exports the current buffer's active conversation history to a JSON file. Usage: `:Que export [filepath]`.",
+    heavy = "Configures the heaviness level of the chat queue. Usage: `:Que heavy [low|medium|high]`. Defaults to low.",
+    qcopy = "Copies chat queue from a source buffer into the current buffer. Usage: `:Que qcopy [src_bufnr] [merge]`.",
+    qlist = "Lists all buffers with active chat queue in a popup table.",
+    export = "Exports the current buffer's active conversation queue to a JSON file. Usage: `:Que export [filepath]`.",
     load = "Loads a text file as context or restores/merges a previously exported JSON session. Usage: `:Que load [filepath]`.",
     json = "Launches the interactive JSON explorer. Inside the popup, use `f` and `d` to cycle indexes.",
 }
@@ -40,7 +40,7 @@ function M.get_help_lines()
         "# qLLM.nvim Help",
         "",
         "## Usage",
-        "- `:Que <prompt>`: Send a general prompt to the LLM.",
+        "- `:Que <prompt>`: Send a general query to the LLM.",
         "- `:Que <command>`: Execute a specific command (e.g., `:Que explain`).",
         "- `:'<,'>Que <command>`: Execute a command on a visual selection.",
         "",
@@ -56,7 +56,7 @@ function M.get_help_lines()
     table.insert(lines, "## Commands")
 
     local commnds_listed = {
-        "chat", "search", "complete", "edit",
+        "query", "search", "complete", "edit",
         "explain", "files", "scan", "init", "tree", "deadcode",
         "wiki", "wiki_index", "wiki_save", "wiki_lint",
         "doc", "tests", "opt", "debug",
@@ -134,15 +134,10 @@ function M.get_help_lines()
     table.insert(lines, "Overrides default grounding model. Be aware that API specs might be different for older models")
     table.insert(lines, "")
 
-    table.insert(lines, "### Conversation History (Memory)")
-    table.insert(lines, "`vim.g.qllm_chat_history_max_messages` (number)")
-    table.insert(lines, "Maximum number of messages to retain in the chat context window. Default: `20`.")
-    table.insert(lines, "")
-    table.insert(lines, "`vim.g.qllm_chat_history_timeout` (number)")
-    table.insert(lines, "Time in seconds before the chat history expires and is cleared. Default: `900` (15 minutes).")
-    table.insert(lines, "")
-    table.insert(lines, "`vim.g.qllm_chat_history_time_based_expiry` (boolean)")
-    table.insert(lines, "Whether to auto-clear history after the timeout. Default: `false`.")
+    table.insert(lines, "### Conversation Queue (Memory)")
+    table.insert(lines, "`vim.g.qllm_queue_opts` (table)")
+    table.insert(lines, "Configuration options for conversation queue and summarization.")
+    table.insert(lines, "Options include: `summarize_style`, `max_messages`, `max_tokens`, `time_based_expiry`, `timeout`.")
     table.insert(lines, "")
 
     table.insert(lines, "### UI Customization")
@@ -186,13 +181,13 @@ function M.get_help_lines()
     
     table.insert(lines, "### 1. Multi-File Context Understanding")
     table.insert(lines, "1. Type `:Que files [src/main.lua src/utils.lua]` How do these files interact?")
-    table.insert(lines, "2. Press Enter. The LLM will read both files and answer the prompt.")
+    table.insert(lines, "2. Press Enter. The LLM will read both files and answer the query.")
     table.insert(lines, "3. *Tip*: Use `<Tab>` after typing `[` to use native file path autocomplete!")
     table.insert(lines, "")
 
     table.insert(lines, "### 2. Iterative Refactor (with Context Injection)")
     table.insert(lines, "1. Select a function visually.")
-    table.insert(lines, "2. Press `<C-i>` inside an empty popup to start a chat with that code.")
+    table.insert(lines, "2. Press `<C-i>` inside an empty popup to start a query with that code.")
     table.insert(lines, "3. Type: `Make this more functional style` and hit Enter.")
     table.insert(lines, "4. The model answers. If it needs tweaking, select the new code and press `<C-i>` again.")
     table.insert(lines, "5. Type: `Also add type annotations.`")
@@ -207,9 +202,9 @@ function M.get_help_lines()
     table.insert(lines, "4. The LLM will search your local files, find the right context, and synthesize an answer.")
     table.insert(lines, "")
 
-    table.insert(lines, "### 4. History Navigation")
+    table.insert(lines, "### 4. Queue Navigation")
     table.insert(lines, "1. Run `:Que recall` to view the last assistant answer.")
-    table.insert(lines, "2. Run `:Que recallq` to view the *prompt* you sent to get that answer.")
+    table.insert(lines, "2. Run `:Que recallq` to view the *query* you sent to get that answer.")
     table.insert(lines, "3. Once any recall/recallq popup is open, press `f` to go forward and `d` to go backward in-place.")
     
     return lines

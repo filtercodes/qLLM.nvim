@@ -2,7 +2,7 @@ local curl = require("plenary.curl")
 local Render = require("qllm.template_render")
 local Utils = require("qllm.utils")
 local Api = require("qllm.api")
-local History = require("qllm.history")
+local Queue = require("qllm.queue")
 local Ui = require("qllm.ui")
 local Logger = require("qllm.logger")
 
@@ -11,7 +11,7 @@ GroqProvider = {}
 GroqProvider.has_streaming = true
 
 function GroqProvider.make_request(command, cmd_opts, command_args, text_selection, bufnr)
-    local past_messages = History.get_messages(bufnr)
+    local past_messages = Queue.get_messages(bufnr)
     local new_user_message_text = Render.render(command, cmd_opts.user_message_template, command_args, text_selection, cmd_opts)
     local system_message_text = Render.render(command, cmd_opts.system_message_template, command_args, text_selection, cmd_opts)
     local messages_for_api = {}
@@ -85,8 +85,8 @@ function GroqProvider.handle_response(json, user_message_text, cb, bufnr)
             else
                 -- TRACE: Log the final response
                 Logger.log_response("groq", "legacy", response_text)
-                History.add_message(bufnr, "user", user_message_text)
-                History.add_message(bufnr, "assistant", response_text)
+                Queue.add_message(bufnr, "user", user_message_text)
+                Queue.add_message(bufnr, "assistant", response_text)
 
                 if vim.g.qllm_clear_visual_selection and vim.api.nvim_buf_is_valid(bufnr) then
                     vim.api.nvim_buf_set_mark(bufnr, "<", 0, 0, {})
@@ -106,7 +106,7 @@ function GroqProvider.make_call(payload, user_message_text, cb, bufnr)
     Api.run_started_hook()
 
     -- TRACE: Log the outgoing request
-    Logger.log_request("groq", payload.command or "chat", payload)
+    Logger.log_request("groq", payload.command or "query", payload)
 
     if type(cb) == "table" then
         -- Streaming Mode
@@ -132,7 +132,7 @@ function GroqProvider.make_call(payload, user_message_text, cb, bufnr)
                 if not chunk then 
                     vim.schedule(function()
                         -- TRACE: Log the final response
-                        Logger.log_response("groq", payload.command or "chat", full_text)
+                        Logger.log_response("groq", payload.command or "query", full_text)
                         cb.on_complete(full_text)
                         Api.run_finished_hook()
                     end)

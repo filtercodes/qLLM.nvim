@@ -100,10 +100,10 @@ vim.g.qllm_horizontal_popup_size = "40%"
 -- Set the width of the vertical popup
 vim.g.qllm_vertical_popup_size = "50%"
 
--- History (short-term memory) configuration
-vim.g.qllm_history_heaviness = vim.g.qllm_history_heaviness or "low"
+-- Queue (short-term memory) configuration
+vim.g.qllm_queue_heaviness = vim.g.qllm_queue_heaviness or vim.g.qllm_history_heaviness or "low"
 
-vim.g.qllm_history_opts = vim.tbl_extend("force", {
+vim.g.qllm_queue_opts = vim.tbl_extend("force", {
     summarize_style = "messages",
     -- "none"      -> no summarization, sliding window only
     -- "messages"  -> summarize when message count exceeds max_messages
@@ -113,7 +113,7 @@ vim.g.qllm_history_opts = vim.tbl_extend("force", {
     summarize_percent = 50,
     time_based_expiry = false,
     timeout = 1800, -- 30 minutes
-}, vim.g.qllm_history_opts or {})
+}, vim.g.qllm_queue_opts or vim.g.qllm_history_opts or {})
 
 -- JSON explorer newline formatting (converts \n strings to real newlines)
 if vim.g.qllm_json_newline == nil then
@@ -241,7 +241,7 @@ vim.g.qllm_commands_defaults = {
         },
         callback_type = "text_popup",
     },
-    ["chat"] = {
+    ["query"] = {
         user_message_template = "{{command_args}}\n{{text_selection}}",
         callback_type = "text_popup",
         allow_empty_text_selection = true,
@@ -265,8 +265,11 @@ if vim.g.qllm_show_search_sources == nil then
     vim.g.qllm_show_search_sources = true
 end
 
-if vim.g.qllm_ground_with_history == nil then
-    vim.g.qllm_ground_with_history = false
+if vim.g.qllm_ground_include_queue == nil then
+    vim.g.qllm_ground_include_queue = vim.g.qllm_ground_with_queue or vim.g.qllm_ground_with_history
+    if vim.g.qllm_ground_include_queue == nil then
+        vim.g.qllm_ground_include_queue = false
+    end
 end
 
 -- Popup commands

@@ -281,7 +281,7 @@ end
 ---@return string? command The resolved command name.
 ---@return string command_args The prompt/arguments for the LLM.
 ---@return string text_selection The injected context.
----@return table overrides Table with history_user_message and ground_with_history.
+---@return table overrides Table with queue_user_message and ground_include_queue.
 function M.handle_context_command(command, args_str, current_bufnr, current_selection, overrides)
     local CommandsList = require("qllm.commands_list")
     local ProjectContext = require("qllm.project_context")
@@ -299,8 +299,8 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
     local command_args = remaining_prompt
     local text_selection = current_selection or ""
     overrides = overrides or {}
-    overrides.ground_with_history = false
-    overrides.history_metadata = {}
+    overrides.ground_include_queue = false
+    overrides.queue_metadata = {}
 
     -- Project Context Injection
     -- 2. Project Context (System Project Map) Injection
@@ -346,7 +346,7 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
     -- If there's no prompt explicitly typed after the files, but the user has selected text,
     -- use the selected text as the prompt for the files (only for files/scan commands).
     -- Handle Selection-to-Prompt fallback
-    if (command == "files" or command == "scan" or command == "chat" or not is_explicit_cmd) 
+    if (command == "files" or command == "scan" or command == "query" or not is_explicit_cmd)
         and remaining_prompt == "" and current_selection ~= "" then
         -- We assume the visual selection in this context is meant to be the prompt/instructions
         command_args = current_selection
@@ -357,8 +357,8 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
     local resolved_files = {}
     if #extracted_blocks > 0 then
         resolved_files = M.resolve_patterns(extracted_blocks)
-        -- If files found but no command, or command is 'chat', upgrade to 'files'
-        if not is_explicit_cmd or command == "chat" then
+        -- If files found but no command, or command is 'query', upgrade to 'files'
+        if not is_explicit_cmd or command == "query" then
             command = "files"
         end
     elseif command == "scan" then
@@ -408,9 +408,9 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
         if command == "files" then
             local context_text = M.format_files_as_context(resolved_files)
             if command_args == "" then
-                overrides.history_user_message = "FILES ANALYSIS: " .. context_files_display
+                overrides.queue_user_message = "FILES ANALYSIS: " .. context_files_display
             else
-                overrides.history_user_message = "FILES: " .. command_args .. " in [" .. context_files_display .. "]"
+                overrides.queue_user_message = "FILES: " .. command_args .. " in [" .. context_files_display .. "]"
             end
             -- Append original text_selection (if any remains) to the file context
             text_selection = system_context .. context_text .. ((text_selection ~= "") and ("\n[USER SELECTION]\n" .. text_selection) or "")
@@ -425,8 +425,8 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
                 if query and remaining_prompt ~= "" then
                     -- Both <query> and a prompt provided: Send to LLM
                     text_selection = system_context .. context_text
-                    overrides.history_user_message = "SCAN: " .. search_query .. " -- " .. remaining_prompt .. " in [" .. context_files_display .. "]"
-                    overrides.history_metadata.search_results = context_text
+                    overrides.queue_user_message = "SCAN: " .. search_query .. " -- " .. remaining_prompt .. " in [" .. context_files_display .. "]"
+                    overrides.queue_metadata.search_results = context_text
                 else
                     -- No prompt provided: Just display results in a popup, bypass LLM.
                     local Ui = require("qllm.ui")
@@ -443,13 +443,13 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
             local context_text = M.format_files_as_context(resolved_files)
             text_selection = system_context .. context_text .. ((text_selection ~= "") and ("\n[USER SELECTION]\n" .. text_selection) or "")
 
-            -- Override history user message to show clean context
+            -- Override queue user message to show clean context
             local suffix = " in [" .. context_files_display .. "]"
             local prompt_str = command_args ~= "" and command_args or (command:upper() .. suffix)
             if command_args ~= "" then
                 prompt_str = prompt_str .. suffix
             end
-            overrides.history_user_message = prompt_str
+            overrides.queue_user_message = prompt_str
         end
     else
         -- Standard 'explain' injection
@@ -462,14 +462,14 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
             if command_args ~= "" then
                 prompt_str = prompt_str .. " (selection)"
             end
-            overrides.history_user_message = prompt_str
+            overrides.queue_user_message = prompt_str
         end
     end
 
-    -- Setup overrides.history_metadata for structured storage
-    overrides.history_metadata = overrides.history_metadata or {}
+    -- Setup overrides.queue_metadata for structured storage
+    overrides.queue_metadata = overrides.queue_metadata or {}
     if #resolved_files > 0 then
-        overrides.history_metadata.files = resolved_files
+        overrides.queue_metadata.files = resolved_files
     end
     -- Keep only the pure selection context (without the prepended system context)
     local selection_context = current_selection or ""
@@ -478,16 +478,16 @@ function M.handle_context_command(command, args_str, current_bufnr, current_sele
         selection_context = ""
     end
     if selection_context ~= "" then
-        overrides.history_metadata.selection = selection_context
+        overrides.queue_metadata.selection = selection_context
     end
 
     if command == "search" then
-        overrides.history_user_message = command_args ~= "" and command_args or "SEARCH"
+        overrides.queue_user_message = command_args ~= "" and command_args or "SEARCH"
     end
 
     -- Final fallback for command if it's still not valid
     if not CommandsList.is_valid_cmd(command) then
-        command = "chat"
+        command = "query"
     end
 
     return command, command_args, text_selection, overrides

@@ -149,7 +149,7 @@ DOCUMENT:
 
     local Providers = require("qllm.providers")
     local CommandsList = require("qllm.commands_list")
-    local cmd_opts = CommandsList.get_cmd_opts("chat", { provider = lib_provider })
+    local cmd_opts = CommandsList.get_cmd_opts("query", { provider = lib_provider })
 
     if not lib_model then
         lib_model = cmd_opts.model
