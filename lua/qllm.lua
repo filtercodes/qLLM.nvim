@@ -112,8 +112,8 @@ function qllmModule.run_cmd(opts)
         return ui_elem
     end
 
-    -- qlist: show all buffers that have chat queue
-    if command == "qlist" and #opts.fargs == 1 then
+    -- list: show all buffers that have chat queue
+    if command == "list" and #opts.fargs == 1 then
         local entries = Queue.list_queue_buffers()
 
         if #entries == 0 then
@@ -179,11 +179,11 @@ function qllmModule.run_cmd(opts)
         return
     end
 
-    -- qcopy: copy queue from a source buffer into the current buffer ─────
-    if command == "qcopy" then
-        --  :Que qcopy          -> copy from alternate buffer (#)
-        --  :Que qcopy 7        -> copy from bufnr 7
-        --  :Que qcopy 7 merge  -> merge instead of replace
+    -- copy: copy queue from a source buffer into the current buffer ─────
+    if command == "copy" then
+        --  :Que copy          -> copy from alternate buffer (#)
+        --  :Que copy 7        -> copy from bufnr 7
+        --  :Que copy 7 merge  -> merge instead of replace
 
         local src_bufnr
         local merge = false
@@ -199,7 +199,7 @@ function qllmModule.run_cmd(opts)
                     src_bufnr = n
                 else
                     vim.notify(
-                        "qcopy: unrecognised argument '" .. arg .. "'. Usage: qcopy [bufnr] [merge]",
+                        "copy: unrecognised argument '" .. arg .. "'. Usage: copy [bufnr] [merge]",
                         vim.log.levels.ERROR, { title = "qLLM" }
                     )
                     return
@@ -212,17 +212,16 @@ function qllmModule.run_cmd(opts)
             src_bufnr = vim.fn.bufnr('#')
             if src_bufnr == -1 then
                 vim.notify(
-                    "qcopy: no alternate buffer found. Specify a bufnr explicitly, e.g. :Que qcopy 3",
+                    "copy: no alternate buffer found. Specify a bufnr explicitly, e.g. :Que copy 3",
                     vim.log.levels.WARN, { title = "qLLM" }
                 )
                 return
             end
         end
 
-        -- Validate source
         if not vim.api.nvim_buf_is_valid(src_bufnr) then
             vim.notify(
-                string.format("qcopy: buffer %d is not valid.", src_bufnr),
+                string.format("copy: buffer %d is not valid.", src_bufnr),
                 vim.log.levels.ERROR, { title = "qLLM" }
             )
             return
@@ -246,7 +245,7 @@ function qllmModule.run_cmd(opts)
                 vim.log.levels.INFO, { title = "qLLM" }
             )
         else
-            vim.notify("qcopy failed: " .. (err or "unknown error"), vim.log.levels.ERROR, { title = "qLLM" })
+            vim.notify("copy failed: " .. (err or "unknown error"), vim.log.levels.ERROR, { title = "qLLM" })
         end
         return
     end

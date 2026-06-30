@@ -127,8 +127,8 @@ Commands are logically categorized into **Action** (direct text generation or ed
 | recall  |  none or number | Displays the last assistant response from the chat queue in a popup without altering the queue. Optionally accept a number to go further back (e.g., `:Que recall 2`). |
 | undo  |  none | Removes the last exchange (prompt and the assistant's response) from the chat queue. Useful for reverting a bad conversation turn. |
 | clear  |  none | Completely clears the conversation to start fresh. |
-| qlist  |  none | Shows the information about conversation queue: buffer number, the number of messages (and tokens if tiktoken is installed), last model, name. |
-| qcopy  |  number and "merge" | Copy entire buffer queue to another buffer. If passing merge command after buffer number, both buffers will be merged. |
+| list  |  none | Shows the information about conversation queue: buffer number, the number of messages (and tokens if tiktoken is installed), last model, name. |
+| copy  |  number and "merge" | Copy entire buffer queue to another buffer. If passing merge command after buffer number, both buffers will be merged. |
 | load   |  filepath or selection | Load text selection or file content into the chat queue. If the file is a qLLM exported JSON queue, it will restore or merge it. |
 | export |  filepath or none | Export the current chat queue to a JSON file. If filepath is omitted, it auto-generates a filename based on the project folder and date. |
 | heavy  |  "low", "medium", or "high" | Configures the heaviness level of the chat queue. Dynamically changes how much context (files, selections, search results) is preserved in subsequent turns. |
@@ -411,22 +411,22 @@ To copy conversation queue from one buffer to another use the following workflow
 - You're in buf 3, had a long chat.
 - Run the command:
 ```
-:Que qlist
+:Que list
 ```
 - It will list the current conversation information in a popup list.
 
-| bufnr | messages | last model | buffer name |
-|-------|----------|------------|-------------|
-| 3 | 12 | claude-3-5 | main.py  (2m ago) |
-| 1 | 4 | gpt-4o | utils.py  (1h ago) |
+| bufnr | messages | tokens | last model | buffer name |
+|-------|----------|--------|------------|-------------|
+| 3 | 12 | 492 | claude-3-5 | main.py  (2m ago) |
+| 1 | 4 | 49 | gpt-4o | utils.py  (1h ago) |
 
 - Go to the new buffer
 - `:enew`
-- Now in the new buffer, blank slate, run any of the `qcopy` variants:
+- Now in the new buffer, blank slate, run any of the `copy` variants:
 ```
-:Que qcopy          -- copies from buf 3 (alternate buffer, the one you just left)
-:Que qcopy 3        -- explicit — same result
-:Que qcopy 3 merge  -- if buf 5 already had some queue, append buf 3's on it
+:Que copy          -- copies from buf 3 (alternate buffer, the one you just left)
+:Que copy 3        -- explicit — same result
+:Que copy 3 merge  -- if buf 5 already had some queue, append buf 3's on it
 ```
 
 The **alternate buffer** default (`vim.fn.bufnr('#')`) covers the most natural case — you just left the buffer you want to branch from, so number lookup is not needed at all.
@@ -446,7 +446,7 @@ You can save and restore conversation queues to share them, backup your work, or
   :Que load rules.md          -- treats as a normal text file and loads its contents as context
   ```
 
-If you load a text file or visual selection, it is appended to the chat queue as a user message and balanced with a mock assistant acknowledgment to maintain role alternation. If you load an exported `qllm` queue JSON file, it will restore the queue exactly as it was. If the active buffer already has queue, the imported messages are merged/appended onto the end of the current conversation (exactly like `qcopy merge` does).erge` does).
+If you load a text file or visual selection, it is appended to the chat queue as a user message and balanced with a mock assistant acknowledgment to maintain role alternation. If you load an exported `qllm` queue JSON file, it will restore the queue exactly as it was. If the active buffer already has queue, the imported messages are merged/appended onto the end of the current conversation (exactly like `copy merge` does).
 
 ### JSON Explorer
 
@@ -530,7 +530,7 @@ The following example maps `<leader>q` + Arrow Keys to resize the dimensions by 
 ```lua
 local qllm = require("qllm")
 
--- Increase/Decrease popup dimensions on the fly
+-- Increase/Decrease popup dimensions using arrow keys
 vim.keymap.set("n", "<leader>q<Up>",    function() qllm.adjust_popup_size(0, 10)   end)
 vim.keymap.set("n", "<leader>q<Down>",  function() qllm.adjust_popup_size(0, -10)  end)
 vim.keymap.set("n", "<leader>q<Left>",  function() qllm.adjust_popup_size(10, 0)   end)
