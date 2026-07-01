@@ -65,7 +65,7 @@ pcall(function() require('vim._core.ui2').enable() end)
 
 ## Commands
 
-The top-level command is `:Que`. Without passing any additional args it triggers a general LLM request using as input text selection and/or prompt text.
+The top-level command is `:Que`. Without passing any additional args it triggers a general LLM request using as input text selection and/or prompt text. 'Que' stands for Query, Question, Queue... or whatever you'd like it to mean.
 
 ![chat](examples/chat.gif?raw=true)
 
