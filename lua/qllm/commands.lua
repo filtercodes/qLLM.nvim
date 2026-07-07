@@ -90,6 +90,7 @@ function Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts
                 local current_chunks = pending_chunks
                 pending_chunks = {} -- Clear for next batch
 
+                local is_first_append = true
                 for _, chunk_data in ipairs(current_chunks) do
                     -- 1. Handle Spinner State Changes (Main thread safe)
                     -- Update spinner if the provider signals a state change (Thinking vs Generating)
@@ -116,9 +117,12 @@ function Commands.run_cmd(command, command_args, text_selection, bufnr, cmd_opts
                             vim.api.nvim_buf_set_lines(ui_bufnr, 0, -1, false, {})
                             is_first_chunk = false
                         end
-                        Ui.append_to_buf(ui_bufnr, final_chunk_text, chunk_data.is_thinking)
+                        Ui.append_to_buf(ui_bufnr, final_chunk_text, chunk_data.is_thinking, true, is_first_append)
+                        is_first_append = false
                     end
                 end
+
+                Ui.sync_window_size(ui_bufnr)
             end
         end
       

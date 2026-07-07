@@ -255,6 +255,11 @@ function GeminiProvider.make_call(payload, user_message_text, cb, bufnr)
                              cb.on_chunk(sources_text, false)
                         end
 
+                        if Utils.handle_stream_end(partial_data, full_text, cb, "gemini") then
+                            Api.run_finished_hook()
+                            return
+                        end
+
                         if full_text == "" then
                             vim.notify("Gemini returned empty text", vim.log.levels.WARN)
                         end

@@ -6,6 +6,19 @@ local Ui = require("qllm.ui")
 -- This bypasses the slow serialization/copying overhead of crossing the vim.b boundary.
 local json_cache = {}
 
+-- Module-level cache to persist state for files across popup lifetimes (within the session)
+M.saved_paths = {}
+
+local find_folding_index -- Forward declaration
+
+local function get_perf_log_path()
+    local path = vim.fn.stdpath("state")
+    if not path or path == "" then
+        path = vim.fn.stdpath("cache")
+    end
+    return path .. "/qllm_perf.log"
+end
+
 function M.render(bufnr)
     local start_time = vim.loop.hrtime()
     -- Fetch the JSON data from the fast, pure Lua memory cache
@@ -102,25 +115,106 @@ function M.render(bufnr)
     vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
     vim.api.nvim_buf_set_option(bufnr, "modifiable", false)
 
+    -- Validate and potentially clear json_active_fold_idx if it exceeds current path length
+    local active_fold = vim.b[bufnr].json_active_fold_idx
+    if active_fold and active_fold > #path then
+        vim.b[bufnr].json_active_fold_idx = nil
+    end
+
+    -- Clear and set active folding highlight on Path line (line 2 of buffer, index 1)
+    local ns_id = vim.api.nvim_create_namespace("qllm_json_fold_hl")
+    vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
+    
+    local fold_idx = find_folding_index(path, bufnr)
+    if fold_idx and #path > 0 then
+        local prefix = "Path: `root."
+        local current_pos = #prefix
+        for i = 1, fold_idx - 1 do
+            current_pos = current_pos + #tostring(path[i]) + 1
+        end
+        local start_col = current_pos
+        local end_col = current_pos + #tostring(path[fold_idx])
+        vim.api.nvim_buf_add_highlight(bufnr, ns_id, "IncSearch", 1, start_col, end_col)
+    end
+
     local t4 = vim.loop.hrtime()
 
     -- Log render details (in milliseconds)
-    local log_msg = string.format(
-        "  [PERF_RENDER] get_vars=%.2fms, traverse=%.2fms, generate_lines=%.2fms, set_lines=%.2fms, total=%.2fms\n",
-        (t1 - start_time) / 1e6,
-        (t2 - t1) / 1e6,
-        (t3 - t2) / 1e6,
-        (t4 - t3) / 1e6,
-        (t4 - start_time) / 1e6
-    )
-    local f = io.open("qllm_perf.log", "a")
-    if f then
-        f:write(log_msg)
-        f:close()
+    if vim.g.qllm_log_enabled == true then
+        local log_msg = string.format(
+            "  [PERF_RENDER] get_vars=%.2fms, traverse=%.2fms, generate_lines=%.2fms, set_lines=%.2fms, total=%.2fms\n",
+            (t1 - start_time) / 1e6,
+            (t2 - t1) / 1e6,
+            (t3 - t2) / 1e6,
+            (t4 - t3) / 1e6,
+            (t4 - start_time) / 1e6
+        )
+        local f = io.open(get_perf_log_path(), "a")
+        if f then
+            f:write(log_msg)
+            f:close()
+        end
     end
 end
 
 function M.handle_enter(bufnr)
+    local cursor = vim.api.nvim_win_get_cursor(0)
+    local row = cursor[1]
+    local col = cursor[2]
+    local filepath = vim.b[bufnr].json_file or ""
+
+    -- If cursor is on the Path line (line 2)
+    if row == 2 then
+        local path = vim.b[bufnr].json_path or {}
+        local prefix = "Path: `root."
+        local prefix_len = #prefix
+
+        if #path == 0 or col < prefix_len then
+            vim.b[bufnr].json_active_fold_idx = nil
+            if filepath ~= "" then
+                M.saved_paths[filepath] = {
+                    path = path,
+                    active_fold_idx = nil
+                }
+            end
+            vim.notify("json_explore: Reset to default folding point.", vim.log.levels.INFO, { title = "qLLM" })
+            M.render(bufnr)
+            return
+        end
+
+        local current_pos = prefix_len
+        local selected_idx = nil
+        for idx, segment in ipairs(path) do
+            local segment_str = tostring(segment)
+            local start_col = current_pos
+            local end_col = current_pos + #segment_str - 1
+
+            if col >= start_col and col <= end_col then
+                selected_idx = idx
+                break
+            end
+            current_pos = current_pos + #segment_str + 1
+        end
+
+        if selected_idx then
+            local part = path[selected_idx]
+            if type(part) == "number" or (type(part) == "string" and tonumber(part) ~= nil) then
+                vim.b[bufnr].json_active_fold_idx = selected_idx
+                if filepath ~= "" then
+                    M.saved_paths[filepath] = {
+                        path = path,
+                        active_fold_idx = selected_idx
+                    }
+                end
+                vim.notify(string.format("json_explore: Active folding index set to segment %d (%s)", selected_idx, tostring(part)), vim.log.levels.INFO, { title = "qLLM" })
+                M.render(bufnr)
+            else
+                vim.notify("json_explore: Selected segment is not a number. Folding requires a numeric index.", vim.log.levels.WARN, { title = "qLLM" })
+            end
+        end
+        return
+    end
+
     local line = vim.api.nvim_get_current_line()
     local path = vim.b[bufnr].json_path or {}
 
@@ -129,6 +223,12 @@ function M.handle_enter(bufnr)
         if #path > 0 then
             table.remove(path)
             vim.b[bufnr].json_path = path
+            if filepath ~= "" then
+                M.saved_paths[filepath] = {
+                    path = path,
+                    active_fold_idx = vim.b[bufnr].json_active_fold_idx
+                }
+            end
             M.render(bufnr)
             -- Move cursor back to top
             vim.api.nvim_win_set_cursor(0, {4, 0})
@@ -147,6 +247,12 @@ function M.handle_enter(bufnr)
             table.insert(path, key)
         end
         vim.b[bufnr].json_path = path
+        if filepath ~= "" then
+            M.saved_paths[filepath] = {
+                path = path,
+                active_fold_idx = vim.b[bufnr].json_active_fold_idx
+            }
+        end
         M.render(bufnr)
         -- Move cursor back to top/first item
         vim.api.nvim_win_set_cursor(0, {4, 0})
@@ -154,7 +260,17 @@ function M.handle_enter(bufnr)
     end
 end
 
-local function find_folding_index(path, bufnr)
+function find_folding_index(path, bufnr)
+    if bufnr then
+        local active = vim.b[bufnr].json_active_fold_idx
+        if active and active <= #path then
+            local part = path[active]
+            if type(part) == "number" or (type(part) == "string" and tonumber(part) ~= nil) then
+                return active
+            end
+        end
+    end
+
     local start_idx = 1
     if bufnr then
         start_idx = (vim.b[bufnr].json_initial_path_len or 0) + 1
@@ -222,23 +338,34 @@ function M.navigate(bufnr, direction)
 
     vim.b[bufnr].json_path = path
     
+    -- Save to persistent state
+    local filepath = vim.b[bufnr].json_file or ""
+    if filepath ~= "" then
+        M.saved_paths[filepath] = {
+            path = path,
+            active_fold_idx = vim.b[bufnr].json_active_fold_idx
+        }
+    end
+
     local t3 = vim.loop.hrtime()
     M.render(bufnr)
     local t4 = vim.loop.hrtime()
 
     -- Log duration details (in milliseconds)
-    local log_msg = string.format(
-        "[PERF] Navigate: path_setup=%.2fms, verify=%.2fms, path_save=%.2fms, render=%.2fms, total=%.2fms\n",
-        (t1 - start_time) / 1e6,
-        (t2 - t1) / 1e6,
-        (t3 - t2) / 1e6,
-        (t4 - t3) / 1e6,
-        (t4 - start_time) / 1e6
-    )
-    local f = io.open("qllm_perf.log", "a")
-    if f then
-        f:write(log_msg)
-        f:close()
+    if vim.g.qllm_log_enabled == true then
+        local log_msg = string.format(
+            "[PERF] Navigate: path_setup=%.2fms, verify=%.2fms, path_save=%.2fms, render=%.2fms, total=%.2fms\n",
+            (t1 - start_time) / 1e6,
+            (t2 - t1) / 1e6,
+            (t3 - t2) / 1e6,
+            (t4 - t3) / 1e6,
+            (t4 - start_time) / 1e6
+        )
+        local f = io.open(get_perf_log_path(), "a")
+        if f then
+            f:write(log_msg)
+            f:close()
+        end
     end
 end
 
@@ -269,9 +396,20 @@ function M.start_explorer(filepath, initial_path, bufnr)
         json_cache[ui_bufnr] = nil
     end)
 
-    vim.b[ui_bufnr].json_path = initial_path or {}
+    -- Check persistent cache first
+    local saved = M.saved_paths[expanded]
+    local use_path = initial_path or {}
+    local use_fold_idx = nil
+    -- Only use saved path if the user didn't specify a custom initial path via args
+    if saved and (#use_path == 0) then
+        use_path = saved.path
+        use_fold_idx = saved.active_fold_idx
+    end
+
+    vim.b[ui_bufnr].json_path = use_path
     vim.b[ui_bufnr].json_initial_path_len = #(initial_path or {})
     vim.b[ui_bufnr].json_file = expanded
+    vim.b[ui_bufnr].json_active_fold_idx = use_fold_idx
     vim.b[ui_bufnr].qllm_metadata = { command = "json_explore" }
 
     -- Map Enter key in this buffer to handle navigation
@@ -285,6 +423,12 @@ function M.start_explorer(filepath, initial_path, bufnr)
         if #path > 0 then
             table.remove(path)
             vim.b[ui_bufnr].json_path = path
+            if expanded ~= "" then
+                M.saved_paths[expanded] = {
+                    path = path,
+                    active_fold_idx = vim.b[ui_bufnr].json_active_fold_idx
+                }
+            end
             M.render(ui_bufnr)
             vim.api.nvim_win_set_cursor(0, {4, 0})
         end

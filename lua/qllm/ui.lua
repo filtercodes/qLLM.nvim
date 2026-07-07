@@ -152,12 +152,29 @@ end
 ---Wrapper for window size synchronization.
 function Ui.sync_window_size(ui_bufnr)
     local info = active_popups[ui_bufnr]
-    return Window.sync_size(ui_bufnr, info)
+    if not info or not info.ui_elem then return 0, 0 end
+
+    local visual_height, max_h = Window.sync_size(ui_bufnr, info)
+
+    local winid = vim.fn.bufwinid(ui_bufnr)
+    if winid ~= -1 and info.following then
+        if visual_height >= max_h then
+            pcall(vim.api.nvim_win_set_cursor, winid, {vim.api.nvim_buf_line_count(ui_bufnr), 0})
+        else
+            pcall(vim.api.nvim_win_set_cursor, winid, {1, 0})
+        end
+    end
+
+    return visual_height, max_h
 end
 
 function Ui.create_window(filetype, bufnr, start_row, start_col, end_row, end_col, is_full_height)
     -- Close any existing popup for this owner before opening a new one
     Ui.close_active_popup(bufnr)
+
+    if vim.g.qllm_auto_expand == false then
+        is_full_height = true
+    end
 
     local popup_type = vim.g.qllm_popup_type
     local ui_elem, max_h, max_row, max_w, col
@@ -401,9 +418,9 @@ function Ui.update_thinking_state(bufnr, is_thinking, show_thinking)
     return Renderer.update_thinking_state(info, is_thinking, show_thinking)
 end
 
-function Ui.append_to_buf(bufnr, text_chunk, is_thinking)
+function Ui.append_to_buf(bufnr, text_chunk, is_thinking, skip_sync, is_first_chunk)
     local info = active_popups[bufnr]
-    return Renderer.append_to_buf(bufnr, text_chunk, is_thinking, info)
+    return Renderer.append_to_buf(bufnr, text_chunk, is_thinking, info, skip_sync, is_first_chunk)
 end
 
 function Ui.popup(lines, filetype, bufnr, start_row, start_col, end_row, end_col, cursor_pos)
@@ -431,8 +448,15 @@ function Ui.refresh_active_popup()
             info.max_row = max_row
             info.max_w = max_w
             info.col = col
+            info.user_resized = true
 
-            Ui.sync_window_size(bufnr)
+            -- Force the window to update its layout to the new user-defined size immediately
+            info.ui_elem:update_layout({
+                size = { height = max_h, width = max_w },
+                position = { row = max_row, col = col }
+            })
+            info.current_h = max_h
+            info.current_w = max_w
         end
     end
 end

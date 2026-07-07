@@ -145,6 +145,12 @@ function AnthropicProvider.make_call(payload, user_message_text, cb, bufnr)
                             full_text = full_text .. sources_text
                             cb.on_chunk(sources_text, false)
                         end
+
+                        if Utils.handle_stream_end(partial_data, full_text, cb, "anthropic") then
+                            Api.run_finished_hook()
+                            return
+                        end
+
                         -- TRACE: Log the final response
                         Logger.log_response("anthropic", payload.command or "query", full_text)
                         cb.on_complete(full_text)

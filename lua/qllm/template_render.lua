@@ -11,24 +11,19 @@ local function get_language()
     end
 end
 
-local function safe_replace(template, key, value)
-    if value == nil then
-        return template:gsub(key, "")
+local function normalize_value(val)
+    if val == nil then
+        return ""
+    elseif type(val) == "table" then
+        return table.concat(val, "\n")
+    else
+        return tostring(val)
     end
-
-    if type(value) == "table" then
-        value = table.concat(value, "\n")
-    end
-
-    if value then
-        -- Replace '%' with '%%' to escape it in the template
-        value = value:gsub("%%", "%%%%")
-    end
-
-    return template:gsub(key, value)
 end
 
 function Render.render(cmd, template, command_args, text_selection, cmd_opts)
+    if not template then return "" end
+
     local language = get_language()
     local language_instructions = ""
     
@@ -44,12 +39,23 @@ function Render.render(cmd, template, command_args, text_selection, cmd_opts)
         final_args = cmd_opts.default_prompt
     end
 
-    template = safe_replace(template, "{{filetype}}", Utils.get_filetype())
-    template = safe_replace(template, "{{text_selection}}", text_selection)
-    template = safe_replace(template, "{{command_args}}", final_args)
-    template = safe_replace(template, "{{language_instructions}}", language_instructions)
-    template = safe_replace(template, "{{language}}", language)
-    return template
+    local replacements = {
+        filetype = normalize_value(Utils.get_filetype()),
+        text_selection = normalize_value(text_selection),
+        command_args = normalize_value(final_args),
+        language_instructions = normalize_value(language_instructions),
+        language = normalize_value(language),
+    }
+
+    -- Use a single-pass gsub with a lookup function.
+    -- This prevents nested/recursive macro evaluation (infinite mirroring) of user-provided
+    -- content like text selections or command arguments. Additionally, since the return value of
+    -- the callback function is inserted literally by gsub, escaping '%' signs is no longer required.
+    local result = template:gsub("{{([%w_]+)}}", function(key)
+        return replacements[key]
+    end)
+
+    return result
 end
 
 return Render

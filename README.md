@@ -11,12 +11,11 @@ Focus is on context management, knowledge extraction and using direct commands t
 | | Requirements |
 |-------------|-------------|
 | Dependencies | [plenary.nvim](https://github.com/nvim-lua/plenary.nvim), [nui.nvim](https://github.com/MunifTanjim/nui.nvim), and [nvim-treesitter](https://github.com/neovim-treesitter/nvim-treesitter) (with parsers installed for target languages). |
-| External (Code Map) | [tokei](https://github.com/XAMPPRocky/tokei) CLI binary (required for project mapping). <br> • **macOS**: `brew install tokei` <br> • **Linux**: `cargo install tokei` (or package manager) <br> • **Windows**: `scoop install tokei` (or cargo) |
+| External (Code Map) | [tokei](https://github.com/XAMPPRocky/tokei) - CLI binary required for project mapping. <br> • macOS: `brew install tokei` <br> • Linux: `cargo install tokei` (or package manager) <br> • Windows: `scoop install tokei` (or cargo) |
 | External (Wiki) | `sqlite3` CLI and the `sqlite-vec` shared library (see [setup guide](#vector-search-setup-sqlite-vec)). |
+| Optional | tiktoken: `python3 -m pip install tiktoken` - for token tracking support. |
 
-Optionally install tiktoken: `python3 -m pip install tiktoken` - for token tracking support.
-
-* Set environment variable for your preferred API key e.g. `ANTHROPIC_API_KEY` [Claude API key](https://platform.claude.com/settings/workspaces/default/keys).
+Set environment variable for your preferred API key e.g. `ANTHROPIC_API_KEY` [Claude API key](https://platform.claude.com/settings/workspaces/default/keys).
 
 Installing with [lazy.nvim](https://github.com/folke/lazy.nvim).
 
@@ -57,7 +56,7 @@ lua << EOF
 EOF
 ```
 
-*Note on Neovim 0.12 and later - to fix problems with status line duplication, enable new UI engine
+* Note on Neovim 0.12 and later - to fix problems with status line duplication, enable new UI engine
 
 ```lua
 pcall(function() require('vim._core.ui2').enable() end)
@@ -69,27 +68,27 @@ The top-level command is `:Que`. Without passing any additional args it triggers
 
 ![chat](examples/chat.gif?raw=true)
 
-### Direct Provider commands & Presets
+#### Direct Provider commands & Presets
 In addition to `:Que` (which uses globally configured default provider), you can invoke specific providers directly, bypassing default settings e.g.:
 * `:Gemini <prompt>`
 * `:Claude <prompt>` etc.
 
 Using these commands works exactly like `:Que`, but routes the request to the specified API with its default model.
 
-There are also configurable presets: `:Pre1`, `:Pre2`, and `:Pre3`. To flexibly switch between more different models or providers in the same context window (e.g., setting `:Pre2` to use Anthropic's Claude 4.6 Sonnet while `:Que` default runs a local Ollama instance). See [Overriding command configurations](#overriding-command-configurations) section below for details.
+There are also configurable presets: `:Pre1`, `:Pre2`, and `:Pre3`. To switch between even more different models or providers in the same context window (e.g., setting `:Pre2` to use Anthropic's Claude 4.6 Sonnet while `:Que` default runs a local Ollama instance). See [Overriding command configurations](#overriding-command-configurations) section below for details.
 
 Commands are logically categorized into **Action** (direct text generation or editing) and **Analysis** (context and knowledge gathering). This distinction allows for orchestrating a development workflow by first building a context through analysis before executing targeted actions.
 
 ## List of default commands
 
-### General
+#### General
 
 | Command      | Input | Description |
 |--------------|---- |------------------------------------|
 | query  |  prompt and/or text selection | General query - Passes the given prompt to LLM and returns the response in a popup. |
 | search |  prompt and/or text selection | Triggers a web search (grounding) before answering to provide up-to-date information. Shows the grounded answer in a popup. |
 
-### Code related commands
+#### Code related commands
 
 | Command      | Input | Description |
 |--------------|---- |------------------------------------|
@@ -100,7 +99,7 @@ Commands are logically categorized into **Action** (direct text generation or ed
 | opt  |  text selection | Asks LLM to optimize the selected code. Updates the code directly in the editor. |
 | doc  |  text selection | Asks LLM to document the selected code. Updates the text directly in the editor. |
 
-### Context commands
+#### Context commands
 
 | Command      | Input | Description |
 |--------------|---- |------------------------------------|
@@ -111,7 +110,7 @@ Commands are logically categorized into **Action** (direct text generation or ed
 | tree  |  symbol name | Queries the project call graph or reference map for the symbol, displaying its callers (upward) and callees (downward) in a text popup. |
 | deadcode | none | Analyzes the project call graph to find disconnected/unused functions, unfinished stubs (with TODO/FIXME tags), and unused local variables. |
 
-### Wiki commands
+#### Wiki commands
 
 | Command      | Input | Description |
 |--------------|---- |------------------------------------|
@@ -120,7 +119,7 @@ Commands are logically categorized into **Action** (direct text generation or ed
 | wiki_save  |  text selection or none | Saves current buffer or visual selection into the Wiki Knowledge Base for future retrieval. |
 | wiki_lint  |  none | Runs the Auditor to find isolated notes or 'Shadow Concepts' in the Wiki. |
 
-### Conversation management
+#### Conversation management
 
 | Command      | Input | Description |
 |--------------|---- |------------------------------------|
@@ -134,7 +133,7 @@ Commands are logically categorized into **Action** (direct text generation or ed
 | heavy  |  "low", "medium", or "high" | Configures the heaviness level of the chat queue. Dynamically changes how much context (files, selections, search results) is preserved in subsequent turns. |
 
 
-### Other
+#### Other
 
 | Command      | Input | Description |
 |--------------|---- |------------------------------------|
@@ -144,9 +143,9 @@ Commands are logically categorized into **Action** (direct text generation or ed
 
 ## Overriding command configurations
 
-The primary configuration table is `vim.g.qllm_commands_defaults`. It is a **dual-purpose table** that allows you to set options both globally (to all commands) and directly for specific commands.
+The main configuration table is `vim.g.qllm_commands_defaults`. It allows you to set options both globally (to all commands) and directly for specific commands.
 
-### Setting defaults
+#### Setting defaults
 
 Any key placed directly in `qllm_commands_defaults` acts as a global default. To override a setting for a specific command, add a sub-table with the command's name.
 
@@ -171,7 +170,7 @@ vim.g.qllm_commands_defaults = {
 }
 ```
 
-### Other supported overrides
+#### Other supported overrides
 
 | Name | Value | Description |
 |------|---------|-------------|
@@ -182,7 +181,7 @@ vim.g.qllm_commands_defaults = {
 | language_instructions | {} | Map of `filetype` -> specific instructions. |
 | extra_params | {} | Table of custom parameters for the API (e.g., `top_p`, `stop_sequences`). |
 
-### Configuring Providers and Models
+#### Configuring Providers and Models
 
 Define base models for each provider using `vim.g.qllm_provider_defaults`. This is the fallback model if no global or command-specific model is set.
 
@@ -205,7 +204,7 @@ vim.g.qllm_search_model_defaults = {
 vim.g.qllm_show_thinking = true
 ```
 
-### Configuring Presets (:Pre1, :Pre2, :Pre3)
+#### Configuring Presets (:Pre1, :Pre2, :Pre3)
 
 Each preset has its own configuration scope. Append `1`, `2`, or `3` to the variables. This is useful for mapping a preset to a completely different stack.
 
@@ -233,19 +232,15 @@ vim.g.qllm_show_search_sources = true
 vim.g.qllm_ground_include_queue = true
 ```
 
-Note that `"local_grounding"` requires `TAVILY_API_KEY` as an environment variable! Local Ollama model uses internet search results from [Tavily](https://app.tavily.com/home) to construct a grounded answer.
+* Note that `"local_grounding"` requires `TAVILY_API_KEY` as an environment variable! Local Ollama model uses internet search results from [Tavily](https://app.tavily.com/home) to construct a grounded answer.
 
-## Knowledge Base & Context (hierarchical RAG)
-
-qLLM includes a local Knowledge Base system designed to turn your Markdown notes into a compounding "Wiki IDE." This architecture is inspired by the **[LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)** concept proposed by Andrej Karpathy, implementing a dual-layer retrieval system (Map and Territory) for high-accuracy semantic discovery.
-
-### Context commands (project scope)
+## Context commands (project map)
 These are commands to inject arbitrary local project context or search results into an LLM request (without bloating the chat queue).
 
-*   If you have manually initialized the project with `:Que init`, qLLM creates an architectural map (`qLLM.md`). This map gets added to the background context of the `files`, `scan`, and `explain` commands to give an LLM better project awareness.
+If you have manually initialized the project with `:Que init`, qLLM creates an architectural map (`qLLM.md`). This map gets added to the background context of the `files`, `scan`, and `explain` commands which then automatically pull relevant content by quering the project graph. 
 
-*   `:Que init`: Analyzes current project directory and creates a `qLLM.md` map to enable project specific context orchestration.
-*   `:Que files [file1.py file2.js *.md] prompt`: Reads multiple local files (supports wildcards and escaped quotes) and passes their content as the context for the prompt.
+*   `:Que init`: Analyzes current project directory and creates a `qLLM.md` map.
+*   `:Que files [file1.py file2.js *.md] prompt`: Reads local files (supports wildcards and escaped quotes) and passes their content as the context for the prompt.
     *   Note: If no prompt is provided, it defaults to the `explain` command for all files.
 *   `:Que scan [src/*.lua] query -- prompt`: Performs a fast literal search across local project files for the `"query"`, automatically expands matches to their containing code blocks using Tree-sitter, and sends the relevant chunks to the LLM for analysis.
     *   Note: If no prompt is provided, it displays the search results in a popup without calling the LLM. The result goes to the chat queue so the next LLM inference can see it.
@@ -259,24 +254,26 @@ For best results with code analysis, install the Tree-sitter parsers:
 ```
 Otherwise the logic will fall back to the manual analysis which is flawed. This will also enable syntax highlighting inside the markdown response for the installed languages.
 
-### The "Librarian" architecture
-When running in `complex` mode, qLLM employs a dual-layer retrieval strategy:
-1.  **The Map (Summaries)**: Retrieval finds the top relevant documents based on LLM-generated summaries and conceptual schema links.
-2.  **The Territory (Chunks)**: Retrieval finds specific, granular evidence chunks using header-aware semantic splitting.
+## Knowledge Base
 
-This way the LLM understands both the "big picture" (Map) and the "exact data" (Territory) before formulating a response.
+Knowledge Base is inspired by the **[LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)** concept proposed by Andrej Karpathy, implementing a dual-layer retrieval system for semantic discovery.
 
-*   **The Active Librarian (self-healing)**: When you save a note, qLLM performs "Autonomous Neighborhood Weaving." It finds the top 5 semantically related files and silently updates them in the background to include back-links and connections to the new note, keeping Wiki compounding over time.
+#### The "Librarian" architecture
+When running in `complex` mode, qLLM employs this strategy:
+1.  The Map (Summaries): Retrieval finds the top relevant documents based on LLM-generated summaries and conceptual schema links.
+2.  The Territory (Chunks): Retrieval finds specific, granular evidence chunks using header-aware semantic splitting.
 
-### Wiki management (knowledge scope)
-These commands operate on your `~/knowledge_base` folder (or another folder of your preference), separate from the local project you're currently working on.
+*   Librarian self-healing: When you save a note, qLLM identifies semantically related files and updates them in the background to include back-links and connections to the new note, keeping Wiki compounding over time.
 
-*   `:Que wiki <query>`: Performs a semantic search across the Wiki Knowledge Base using the Hierarchical RAG architecture.
-*   `:Que wiki_index`: Scans the Wiki folder and performs a "one-pass" indexing. It uses a local LLM to act as a Librarian, generating summaries and schema connections while computing vectors. It includes sha256-based change detection to skip unchanged files.
+#### Wiki management
+These commands operate on your `~/knowledge_base` folder (or another folder of your preference).
+
+*   `:Que wiki <query>`: Performs a semantic search across the Wiki Knowledge Base using the Hierarchical RAG.
+*   `:Que wiki_index`: Scans the Wiki folder and performs a "one-pass" indexing. It uses an LLM to do cross-linking, generating summaries and schema connections while computing vectors. It includes sha256-based change detection to skip unchanged files.
 *   `:Que wiki_save filename.md`: Saves the current buffer or visual selection directly into the Wiki and triggers a background index update for that file.
 *   `:Que wiki_lint`: Runs the Auditor. It populates Neovim Quickfix list with "Shadow Concepts" (highly similar files with no shared tags) and "Orphan Files" (notes that are never mentioned elsewhere).
 
-### Configuration
+#### Configuration
 
 All Knowledge Base and Project Context settings are unified under `vim.g.qllm_kb_opts`.
 
@@ -303,7 +300,7 @@ vim.g.qllm_kb_opts = {
 
     -- ORCHESTRATION (The Librarian)
     scan_context = 3,            -- Lines of context around scan matches
-    sync_strategy = "auto",      -- "auto" (background weaving) | "manual"
+    sync_strategy = "auto",      -- "auto" (cross-linking) | "manual"
     neighborhood_size = 5,       -- Number of related files to weave
 }
 
@@ -316,15 +313,15 @@ vim.g.qllm_provider_capabilities = {
 }
 ```
 
-### Vector Search setup (sqlite-vec)
+#### Vector Search setup (sqlite-vec)
 
 To enable semantic search for Knowledge Base, download the `sqlite-vec` shared library. This is a small, vector database extension for SQLite.
 
-1.  **Download the Extension**: Get the pre-compiled binary from the **[sqlite-vec releases](https://github.com/asg017/sqlite-vec/releases)**.
-    *   **macOS**: `vec0.dylib`
-    *   **Linux**: `vec0.so`
-    *   **Windows**: `vec0.dll`
-2.  **Configure the Path**: Update `kb_opts` with the absolute path to this file.
+1.  Download the Extension: Get the pre-compiled binary from the [sqlite-vec releases](https://github.com/asg017/sqlite-vec/releases).
+    *   macOS: `vec0.dylib`
+    *   Linux: `vec0.so`
+    *   Windows: `vec0.dll`
+2.  Configure the Path: Update `kb_opts` with the absolute path to this file.
 
 ```lua
 vim.g.qllm_kb_opts = {
@@ -333,7 +330,7 @@ vim.g.qllm_kb_opts = {
 }
 ```
 
-*Note: The `sqlite3` CLI must also be available in `$PATH` for the Knowledge Base to function.*
+* Note: The `sqlite3` CLI must also be available in `$PATH` for the Knowledge Base to function.
 
 ## Chat Queue (short-term memory)
 
@@ -355,7 +352,7 @@ At the high level, context pipeline resembles a queue hence the name qLLM (queue
 - `"messages"`  -- summarize when message count exceeds `max_messages`
 - `"tokens"`    -- summarize when token count exceeds `max_tokens`
 
-*Note: Python3 and `tiktoken` installed are requirements for using token based queue management.
+* Note: Python3 and `tiktoken` installed are requirements for using token based queue management.
 
 Example configuration (`init.lua`):
 
@@ -363,28 +360,28 @@ Example configuration (`init.lua`):
 -- Modern queue setup with background summarization
 vim.g.qllm_queue_opts = {
     summarize_style = "tokens",
-    max_tokens = 80000,             -- 80k should be a safe zone for most modern models
-    summarize_percent = 30,         -- Rather subtle summarise only 30% of oldest messages
+    max_tokens = 80000,              -- 80k should be a safe zone for most modern models
+    summarize_percent = 30,          -- Rather subtle summarise only 30% of oldest messages
     summarize_provider = "openai",
-    summarize_model = "gpt-4o-mini" -- Use a cheap model for background work
-    time_based_expiry = false,      -- Turn off amnesia mode
+    summarize_model = "gpt-4o-mini", -- Use a cheap model for background work
+    time_based_expiry = false,       -- Turn off amnesia mode
 }
 ```
 
 ### Variable Queue Heaviness
 
-To prevent the LLM context from cluttering quickly or sending stale versions of files, use the **Variable Queue Heaviness**. You can dynamically control the amount of context (such as resolved file contents, visual selections, and search results) from the commands that is carried forward into subsequent conversation turns.
+To prevent the LLM context from cluttering quickly or sending stale versions of files, use the "Variable Queue Heaviness". You can control the amount of context (such as resolved file contents, visual selections, and search results) from the commands that is carried forward into subsequent conversation turns.
 
 Default, heaviness setting is `"low"`. It can be set globally via `vim.g.qllm_queue_heaviness`, and there is also a command to change it dynamically when required using the `:Que heavy low|medium|high`.
 
 #### Heaviness levels:
-- **`low` (Default)**: Only the clean query prompt/instruction (e.g., `"FILES: explain this in [queue.lua]"`) is recorded in the conversation queue. Visual selection code, Tavily search results, and raw file contents are discarded on subsequent turns. This is token-efficient and prevents the LLM from referencing stale, outdated code versions as you modify files.
-- **`medium`**: Visual selections and search results are preserved and re-sent in queue, but **full file contents are excluded**. This is good for active, selection-based coding sessions without buffer-bloat.
-- **`high`**: Everything (including raw file contents, selections, and search results) is appended to subsequent turns. This provides the LLM with complete memory of the input, at the cost of higher token consumption and potential confusion if file contents change.
+- `low` (Default): Only the clean query prompt/instruction (e.g., `"FILES: explain this in [queue.lua]"`) is recorded in the conversation queue. Visual selection code, Tavily search results, and raw file contents are discarded on subsequent turns. This is token-efficient and prevents the LLM from referencing stale, outdated code versions as you modify files.
+- `medium`: Visual selections and search results are preserved and re-sent in queue, but full file contents are excluded. This is good for active, selection-based coding sessions without buffer-bloat.
+- `high`: Everything (including raw file contents, selections, and search results) is appended to subsequent turns. This provides the LLM with complete memory of the input, at the cost of higher token consumption and potential confusion if file contents change.
 
-The idea is that some context is preservable and static with high importance and requires high heaviness, while other context might be in the process of change or completely non-relevant for the major context of the conversation. Changing the heaviness level on demand, alows for higher granularity in context managent.
+The idea is that some context is preservable and static with high importance and requires high heaviness, while other context might be in the process of change or completely non-relevant for the major context of the conversation. Changing the heaviness level on demand, allows for higher granularity in context managent.
 
-### Queue navigation
+#### Queue navigation
 
 View previous assistant responses in a popup window using keyboard shortcuts:
 
@@ -405,33 +402,28 @@ To traverse the queue without closing and reopening the window:
 *   Press `f` to go forward (toward the most recent response/question).
 *   Press `d` to go backward (toward older responses/questions).
 
-### Copy and Merge
+#### Copy and Merge
 
-To copy conversation queue from one buffer to another use the following workflow.
-- You're in buf 3, had a long chat.
-- Run the command:
+To copy conversation queue from one buffer to another first use `list` command:
+
 ```
-:Que list
+:Que list -- It will list the current conversation information in a popup list
 ```
-- It will list the current conversation information in a popup list.
 
 | bufnr | messages | tokens | last model | buffer name |
 |-------|----------|--------|------------|-------------|
 | 3 | 12 | 492 | claude-3-5 | main.py  (2m ago) |
 | 1 | 4 | 49 | gpt-4o | utils.py  (1h ago) |
 
-- Go to the new buffer
-- `:enew`
-- Now in the new buffer, blank slate, run any of the `copy` variants:
 ```
 :Que copy          -- copies from buf 3 (alternate buffer, the one you just left)
 :Que copy 3        -- explicit — same result
 :Que copy 3 merge  -- if buf 5 already had some queue, append buf 3's on it
 ```
 
-The **alternate buffer** default (`vim.fn.bufnr('#')`) covers the most natural case — you just left the buffer you want to branch from, so number lookup is not needed at all.
+The alternate buffer default (`vim.fn.bufnr('#')`) covers the most natural case — you just left the buffer you want to branch from, so number lookup is not needed at all.
 
-### Exporting and Importing Sessions
+#### Exporting and Importing Sessions
 
 You can save and restore conversation queues to share them, backup your work, or resume them later using `export` and `load`:
 
@@ -464,22 +456,23 @@ To inspect structured data and load specific keys or values into the LLM context
 - **Index Pagination (Folding Point Traversal)**:
   - If the path you are exploring contains a numeric array/object index (e.g. `users.1.name`), the first numeric coordinate (scanning left-to-right) acts as the active folding point.
   - While inside the JSON explorer popup, you can press `f` (forward) or `d` (backward) to automatically increment or decrement that index and page through different records (e.g., transitions to `users.2.name`, `users.3.name`) while preserving your deep nested position!
-  - **Multiple / Nested Indices**: Only one folding point is active at a time. If you have nested coordinates (e.g. `departments.2.employees.5.salary`), the leftmost index (`2`) is traversed. To target a deeper index dynamically, change the exploration root when launching the command (e.g. `:Que json config.json departments.2` leaves `2` behind in the root, making the employee index `5` the active folding point).
+  - **Multiple / Nested Indices**: If you have multiple nested indices (e.g. `departments.2.employees.5.salary`), the leftmost index (`2`) is active by default. You can change the active folding point at any time by moving your cursor to the `Path:` line at the top of the buffer (line 2) and pressing `<CR>` (Enter) on any other number in the path (e.g., `5`). The active folding point is highlighted in the path string. To reset back to the default leftmost index, press `<CR>` on `root` or the prefix.
+  - **State Retention**: The explorer caches your path position and active folding point for each JSON file. If you exit the popup and reopen the explorer for the same file (without specifying sub-path arguments), it automatically restores your previous position and active folding index. This cache is saved in-memory and resets when Neovim is closed.
 - **Context Injection**:
   - Since the explorer is a standard buffer, you can visually select any keys or values displayed and run `:'<,'>Que load` to dump them into the active conversation queue.
 
 ## Popup options
 
-### Popup commands
+#### Filetype and syntax
 
-The default filetype of the text popup window is markdown. This can be changed by setting the `qllm_text_popup_filetype` variable.
+The default filetype of the text popup window is markdown. This can be changed by setting the popup filetype variable.
 
 ```lua
 vim.g.qllm_text_popup_filetype = "markdown"
 ```
 
 To make the internal code examples have syntax highlighting and enable better code analysis, add your preferred languages to treesitter:
-```vim
+```lua
 require('nvim-treesitter').install { 'markdown', 'markdown_inline', 'python', 'javascript', 'lua' }
 ```
 
@@ -489,7 +482,7 @@ When using reasoning models, `qllm_show_thinking` configures popup to either dis
 vim.g.qllm_show_thinking = true
 ```
 
-### Popup commands
+#### Popup commands
 
 ```lua
 vim.g.qllm_ui_commands = {
@@ -498,13 +491,14 @@ vim.g.qllm_ui_commands = {
   use_as_output = "<c-o>", -- key to use the popup content as output and replace the original lines
   use_as_input = "<c-i>", -- key to use the popup content as input for a new API request
 }
-vim.g.qllm_ui_commands = {
+
+vim.g.qllm_ui_custom_commands = {
   -- tables as defined by nui.nvim https://github.com/MunifTanjim/nui.nvim/tree/main/lua/nui/popup#popupmap
   {"n", "<c-l>", function() print("do something") end, {noremap = false, silent = false}}
 }
 ```
 
-### Popup layouts
+#### Popup layouts
 
 ```lua
 vim.g.qllm_popup_layout = {
@@ -521,11 +515,13 @@ vim.g.qllm_popup_layout = {
 }
 ```
 
-### Dynamic popup resizing and movement
+* Note `size.height` becomes max height if auto expand is `true` - See [Popup UI settings](#popup-ui-settings)
 
-Set custom keymaps to dynamically adjust the maximum size and position settings for the session. This is useful for expanding the window when reading long code blocks.
+#### Keymaps for popup resizing and movement
 
-The following example maps `<leader>q` + Arrow Keys to resize the dimensions by 10% increments, and `<leader>q` + `hjkl` keys to shift the position by 5% increments. The values set this way persist for the duration of the session.
+Set custom keymaps to adjust the size and position settings for the popup. This is useful for expanding or moving the window out of the way when reading long code blocks. Values set this way will persist till the end of the session/buffer.
+
+The following example maps `<leader>q` + Arrow Keys to resize the dimensions by 10% increments, and `<leader>q` + `hjkl` keys to shift the position by 5% increments.
 
 ```lua
 local qllm = require("qllm")
@@ -543,13 +539,20 @@ vim.keymap.set("n", "<leader>qk",       function() qllm.adjust_popup_position(0,
 vim.keymap.set("n", "<leader>ql",       function() qllm.adjust_popup_position(5, 0)  end)
 ```
 
-### Popup border style
+#### Popup UI settings
 
 ```lua
+-- Border style (e.g., "rounded", "single", "double", "solid")
 vim.g.qllm_popup_style = "rounded"
+-- Whether to automatically expand the popup height as content streams in
+vim.g.qllm_auto_expand = true
+-- Minimum height for the popup if resizing is true (defaults to 5 lines)
+vim.g.qllm_min_popup_height = 5
 ```
 
-### Popup window options
+#### Popup window options
+
+This block of settings is passed directly to nui.nvim plugin.
 
 ```lua
 -- Enable text wrapping and line numbers
@@ -561,7 +564,7 @@ vim.g.qllm_popup_window_options = {
 }
 ```
 
-### Popup window color setup
+#### Popup window color setup
 
 An example of custom dark mode in vimscript.
 
@@ -570,7 +573,7 @@ highlight NormalFloat guibg=#2f2f2f ctermbg=235
 highlight FloatBorder guifg=#8ec07c ctermfg=108
 ```
 
-### Move completion to popup window
+#### Move completion to popup window
 
 For any command, you can override the callback type to move the completion to a popup window. An example below is for overriding the `complete` command.
 
@@ -584,7 +587,7 @@ vim.g.qllm_commands = {
 }
 ```
 
-### Horizontal or vertical split window
+#### Horizontal or vertical split window
 
 If you prefer a horizontal or vertical split window, you can change the popup type to `horizontal` or `vertical`.
 
@@ -602,7 +605,7 @@ vim.g.qllm_vertical_popup_size = "40%"
 
 ## More configuration options
 
-### Custom status hooks
+#### Custom status hooks
 
 You can add custom hooks to update status line or other ui elements, for example, this code updates the status line colour to yellow while the request is in progress.
 
@@ -617,7 +620,7 @@ vim.g.qllm_hooks = {
 }
 ```
 
-### Lualine status component
+#### Lualine status component
 
 There is a convenience function `get_status` to add a status component to lualine. This function provides an animated progress spinner while a request is running, followed by the name of the last command and the active LLM model (e.g., `⠋ query  🤖 qwen3.6:27b`).
 
@@ -652,7 +655,7 @@ Alternatively if you don't use `lualine`, a `vim.notify` message will display th
 vim.g.qllm_print_model = false
 ```
 
-### Optimizing local models (Ollama)
+#### Optimizing local models (Ollama)
 
 For the faster inference speed with local models via Ollama, you may want to set an empty system prompt for better prompt caching. If you configured a custom one in your `Modelfile`, then be sure to disable it globally in the Ollama provider settings:
 
@@ -674,7 +677,7 @@ Additionally, look into how to enable KV Cache, and for MacOS use [NVFP4](https:
 
 Enable logging to inspect the raw JSON payloads sent to and from the LLM providers.
 
-### Enabling logs
+#### Enabling logs
 
 Logging can be enabled for the entire session or just for the next request.
 
@@ -686,7 +689,7 @@ vim.g.qllm_log_enabled = true
 vim.g.qllm_debug = true
 ```
 
-### Viewing logs
+#### Viewing logs
 
 Logs are written to a file in local Neovim state directory. Find the exact path by running `:lua print(require("qllm.logger").get_log_path())`
 
@@ -700,7 +703,7 @@ The logs contain full JSON request payload and the assistant response.
 
 ## Writing new commands
 
-### Custom commands
+#### Custom commands
 
 Custom commands can be added to the `vim.g.qllm_commands` configuration option to extend the available commands.
 
@@ -714,9 +717,9 @@ vim.g.qllm_commands = {
   }
 }
 ```
-The above configuration adds the command `:Que modernize` that attempts modernize the selected code snippet.
+The above configuration adds the command `:Que modernize` that attempts to modernize the selected code snippet.
 
-### Command args
+#### Command args
 
 Commands are normally a single value, for example `:Que complete`. You can make commands accept additional arguments by using the `{{command_args}}` macro anywhere in either `user_message_template` or `system_message_template`. For example:
 
@@ -732,7 +735,7 @@ vim.g.qllm_commands = {
 
 After defining this command, any `:Que` command that has `testwith` as its first argument will be handled. For example, `:Que testwith some additional instructions` will be interpreted as `testwith` with `"some additional instructions"`.
 
-### Language instructions
+#### Language instructions
 
 Some commands have templates that use the `{{language_instructions}}` macro to allow for additional instructions for specific [filetypes](https://neovim.io/doc/user/filetype.html).
 
@@ -748,7 +751,7 @@ vim.g.qllm_commands_defaults = {
 
 The above adds a specific `Use trailing return type.` to the command `complete` for the filetype `cpp`.
 
-### Templates
+#### Templates
 
 | Macro | Description |
 |------|-------------|
@@ -758,7 +761,7 @@ The above adds a specific `Use trailing return type.` to the command `complete` 
 | `{{command_args}}` | Everything passed to the command as an argument, joined with spaces. |
 | `{{language_instructions}}` | The found value in the `language_instructions` map. |
 
-### Callback types
+#### Callback types
 
 | Name      | Description |
 |--------------|----------|

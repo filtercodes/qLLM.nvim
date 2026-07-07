@@ -102,9 +102,15 @@ function Window.create_popup(is_full_height)
     local midpoint = max_row + (max_height / 2)
     local initial_row = math.floor(midpoint - (1 / 2))
 
+    -- Set a minimum aesthetic height (default to 5 lines)
+    local min_height = vim.g.qllm_min_popup_height or 5
+    -- Safety: Ensure our min_height isn't taller than the terminal height limits
+    min_height = math.min(min_height, max_height)
+
     -- If clean window, use max_height and max_row
-    local start_height = is_full_height and max_height or 1
-    local start_row = is_full_height and max_row or initial_row
+    local start_height = is_full_height and max_height or min_height
+    -- TOP-DOWN ANCHORING: start_row is always max_row to keep the top border fixed
+    local start_row = max_row
 
     -- 4. Return the element and its max constraints
     local ui_elem = Popup({
@@ -142,8 +148,8 @@ function Window.sync_size(ui_bufnr, info)
         return 0, 0
     end
 
-    -- Skip shrinking for full-height input windows
-    if info.is_full_height then
+    -- Skip shrinking for full-height input windows or if the user has manually resized the window
+    if info.is_full_height or info.user_resized then
         return 0, 0
     end
 
@@ -169,19 +175,18 @@ function Window.sync_size(ui_bufnr, info)
         end
     end
 
-    local target_h = math.min(visual_height, info.max_h)
+    -- Standard dynamic auto-sizing with a visual floor
+    local min_height = vim.g.qllm_min_popup_height or 5
+    local target_h = math.min(info.max_h, math.max(visual_height, min_height))
     local target_w = info.max_w
 
     if target_h ~= info.current_h or target_w ~= info.current_w then
-        -- SYMMETRIC EXPANSION:
-        -- Calculating the row from the midpoint ensures the window expands equally 
-        -- upwards and downwards as the content grows.
-        local midpoint = info.max_row + (info.max_h / 2)
-        local centered_row = math.floor(midpoint - (target_h / 2))
-
+        -- TOP-DOWN EXPANSION:
+        -- Lock the starting row to max_row (the highest point). 
+        -- This forces the window to only grow downwards.
         info.ui_elem:update_layout({
             size = { height = target_h, width = target_w },
-            position = { row = centered_row, col = info.col }
+            position = { row = info.max_row, col = info.col }
         })
         info.current_h = target_h
         info.current_w = target_w

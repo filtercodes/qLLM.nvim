@@ -131,6 +131,11 @@ function GroqProvider.make_call(payload, user_message_text, cb, bufnr)
 
                 if not chunk then 
                     vim.schedule(function()
+                        if Utils.handle_stream_end(partial_data, full_text, cb, "groq") then
+                            Api.run_finished_hook()
+                            return
+                        end
+
                         -- TRACE: Log the final response
                         Logger.log_response("groq", payload.command or "query", full_text)
                         cb.on_complete(full_text)

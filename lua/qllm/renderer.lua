@@ -75,13 +75,13 @@ function Renderer.update_thinking_state(info, is_thinking, show_thinking)
     return separator
 end
 
-function Renderer.append_to_buf(bufnr, text_chunk, is_thinking, info)
+function Renderer.append_to_buf(bufnr, text_chunk, is_thinking, info, skip_sync, is_first_chunk)
     if text_chunk == nil or #text_chunk == 0 then return end
 
     local winid = vim.fn.bufwinid(bufnr)
 
     -- Sticky Auto-Scroll Logic
-    if winid ~= -1 and info then
+    if (not skip_sync or is_first_chunk) and winid ~= -1 and info then
         local cursor = vim.api.nvim_win_get_cursor(winid)
         local line_count = vim.api.nvim_buf_line_count(bufnr)
 
@@ -122,17 +122,19 @@ function Renderer.append_to_buf(bufnr, text_chunk, is_thinking, info)
         end
     end
 
-    local visual_height, max_h = Window.sync_size(bufnr, info)
+    if not skip_sync then
+        local visual_height, max_h = Window.sync_size(bufnr, info)
 
-    -- DETERMINISTIC SCROLLING:
-    -- Keep the cursor at the top (1, 0) while the window is blooming (visual_height < max_h). 
-    -- Only jump the cursor to the bottom and begin active scrolling once
-    -- the content exceeds the maximum allowed window size.
-    if winid ~= -1 and info and info.following then
-        if visual_height >= max_h then
-            pcall(vim.api.nvim_win_set_cursor, winid, {vim.api.nvim_buf_line_count(bufnr), 0})
-        else
-            pcall(vim.api.nvim_win_set_cursor, winid, {1, 0})
+        -- DETERMINISTIC SCROLLING:
+        -- Keep the cursor at the top (1, 0) while the window is blooming (visual_height < max_h). 
+        -- Only jump the cursor to the bottom and begin active scrolling once
+        -- the content exceeds the maximum allowed window size.
+        if winid ~= -1 and info and info.following then
+            if visual_height >= max_h then
+                pcall(vim.api.nvim_win_set_cursor, winid, {vim.api.nvim_buf_line_count(bufnr), 0})
+            else
+                pcall(vim.api.nvim_win_set_cursor, winid, {1, 0})
+            end
         end
     end
 end

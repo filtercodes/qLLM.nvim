@@ -248,6 +248,11 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
                 if not chunk then 
                     -- End of stream
                     vim.schedule(function()
+                        if Utils.handle_stream_end(partial_data, full_text, cb, "openai") then
+                            Api.run_finished_hook()
+                            return
+                        end
+
                         -- TRACE: Log the final response
                         local log_ok, log_err = pcall(Logger.log_response, "openai", command_name, full_text)
                         if not log_ok then

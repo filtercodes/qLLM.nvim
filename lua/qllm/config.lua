@@ -81,6 +81,11 @@ vim.g.qllm_text_popup_filetype = "markdown"
 -- Set the type of ui to use for the popup, options are "popup", "vertical" or "horizontal"
 vim.g.qllm_popup_type = "popup"
 
+-- Whether to automatically expand the popup height as content streams in
+if vim.g.qllm_auto_expand == nil then
+    vim.g.qllm_auto_expand = true
+end
+
 -- Whether to show the thinking process in the UI (if supported by the provider)
 vim.g.qllm_show_thinking = true
 

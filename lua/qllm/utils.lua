@@ -319,4 +319,37 @@ function Utils.handle_cmdline_enter()
     return "<CR>"
 end
 
+---Handles the end of a stream, parsing raw JSON error payloads if no text was generated.
+---@param partial_data string The raw response buffer accumulated so far.
+---@param full_text string The accumulated text parsed from stream chunks.
+---@param cb table The callbacks table (containing on_error).
+---@param provider_name string The name of the provider for fallback warning messages.
+---@return boolean handled True if an error was found and processed, indicating that the caller should bypass on_complete.
+function Utils.handle_stream_end(partial_data, full_text, cb, provider_name)
+    if full_text ~= "" then
+        return false
+    end
+
+    local trimmed = vim.trim(partial_data)
+    if trimmed ~= "" then
+        local decode_ok, decoded = pcall(vim.fn.json_decode, trimmed)
+        if decode_ok and decoded then
+            -- Handle common JSON error formats from API providers (Gemini, OpenAI, Anthropic, Groq)
+            if decoded.error then
+                cb.on_error(decoded.error)
+                return true
+            elseif decoded.type == "error" and decoded.error then
+                cb.on_error(decoded.error)
+                return true
+            end
+        end
+
+        -- If not standard JSON error structure, return the raw trimmed payload
+        cb.on_error(trimmed)
+        return true
+    end
+
+    return false
+end
+
 return Utils
