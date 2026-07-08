@@ -235,9 +235,8 @@ vim.g.qllm_ground_include_queue = true
 * Note that `"local_grounding"` requires `TAVILY_API_KEY` as an environment variable! Local Ollama model uses internet search results from [Tavily](https://app.tavily.com/home) to construct a grounded answer.
 
 ## Context commands (project map)
-These are commands to inject arbitrary local project context or search results into an LLM request (without bloating the chat queue).
 
-If you have manually initialized the project with `:Que init`, qLLM creates an architectural map (`qLLM.md`). This map gets added to the background context of the `files`, `scan`, and `explain` commands which then automatically pull relevant content by quering the project graph. 
+If you have manually initialized the project with `:Que init`, qLLM creates an architectural map (`qLLM.md`). This map gets added to the background context of the `files`, `scan`, and `explain` commands which then automatically pull relevant content by querying the project graph.
 
 *   `:Que init`: Analyzes current project directory and creates a `qLLM.md` map.
 *   `:Que files [file1.py file2.js *.md] prompt`: Reads local files (supports wildcards and escaped quotes) and passes their content as the context for the prompt.
@@ -259,9 +258,9 @@ Otherwise the logic will fall back to the manual analysis which is flawed. This 
 Knowledge Base is inspired by the **[LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)** concept proposed by Andrej Karpathy, implementing a dual-layer retrieval system for semantic discovery.
 
 #### The "Librarian" architecture
-When running in `complex` mode, qLLM employs this strategy:
-1.  The Map (Summaries): Retrieval finds the top relevant documents based on LLM-generated summaries and conceptual schema links.
-2.  The Territory (Chunks): Retrieval finds specific, granular evidence chunks using header-aware semantic splitting.
+When running in `complex` mode, qLLM employs the strategy:
+1.  Summaries: Retrieval finds the top relevant documents based on LLM-generated summaries and conceptual schema links.
+2.  Chunks: Retrieval finds specific, granular evidence chunks using header-aware semantic splitting.
 
 *   Librarian self-healing: When you save a note, qLLM identifies semantically related files and updates them in the background to include back-links and connections to the new note, keeping Wiki compounding over time.
 
@@ -453,11 +452,12 @@ To inspect structured data and load specific keys or values into the LLM context
 - **Navigation Controls**:
   - Press `<CR>` (Enter) on any line matching `▶ [key]` to go into it.
   - Press `<CR>` on `◀ [..]` or press `<BS>` (Backspace) anywhere to go back up to the parent directory.
+  - Press `u` to undo the last navigation action (pressing it again acts as a redo).
 - **Index Pagination (Folding Point Traversal)**:
   - If the path you are exploring contains a numeric array/object index (e.g. `users.1.name`), the first numeric coordinate (scanning left-to-right) acts as the active folding point.
   - While inside the JSON explorer popup, you can press `f` (forward) or `d` (backward) to automatically increment or decrement that index and page through different records (e.g., transitions to `users.2.name`, `users.3.name`) while preserving your deep nested position!
   - **Multiple / Nested Indices**: If you have multiple nested indices (e.g. `departments.2.employees.5.salary`), the leftmost index (`2`) is active by default. You can change the active folding point at any time by moving your cursor to the `Path:` line at the top of the buffer (line 2) and pressing `<CR>` (Enter) on any other number in the path (e.g., `5`). The active folding point is highlighted in the path string. To reset back to the default leftmost index, press `<CR>` on `root` or the prefix.
-  - **State Retention**: The explorer caches your path position and active folding point for each JSON file. If you exit the popup and reopen the explorer for the same file (without specifying sub-path arguments), it automatically restores your previous position and active folding index. This cache is saved in-memory and resets when Neovim is closed.
+  - **State Retention**: The explorer caches your path position and active folding point for each JSON file. If you exit the popup and reopen the explorer for the same file (without specifying sub-path arguments), it will restore previous position and active folding index. This cache is saved in-memory and resets when Neovim is closed.
 - **Context Injection**:
   - Since the explorer is a standard buffer, you can visually select any keys or values displayed and run `:'<,'>Que load` to dump them into the active conversation queue.
 

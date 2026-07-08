@@ -68,7 +68,7 @@ function M.init_project(callback)
     local dir_listing = table.concat(relative_files, "\n")
 
     local prompt = string.format([[
-You are the Project Librarian. Analyze the following project structure and README.
+You are the Project Architect. Analyze the following project structure and README.
 Generate a high-level architectural map for this project.
 Include:
 1. Architecture Summary: What is this project?
@@ -80,8 +80,7 @@ PROJECT STRUCTURE:
 README CONTENT:
 %s
 
-IMPORTANT: Output your response in Markdown format. Start with a metadata block in HTML comments:
-<!-- METADATA: {"hash": "PENDING", "count": 0} -->
+IMPORTANT: Output your response in Markdown format.
 ]], dir_listing, readme_content)
 
     local provider_name = kb_opts.context_provider or kb_opts.project_provider or vim.g.qllm_api_provider
@@ -97,7 +96,9 @@ IMPORTANT: Output your response in Markdown format. Start with a metadata block 
         model_name = provider_opts.model
     end
 
-    vim.notify("Initializing Project Context... Calling Librarian.", vim.log.levels.INFO)
+    -- Build the AST call graph locally first so it is available even if LLM fails/is offline
+    vim.notify("Initializing Project Context... Mapping codebase structure.", vim.log.levels.INFO)
+    CodeExtraction.build_and_save_call_graph(root)
 
     provider.make_call({
         model = model_name,
@@ -107,17 +108,19 @@ IMPORTANT: Output your response in Markdown format. Start with a metadata block 
         local response = table.concat(lines, "\n")
         local hash, count = M.generate_project_skeleton(root)
         
-        -- Replace pending metadata with actual values
-        local metadata_str = string.format('{"hash": "%s", "count": %d}', hash, count)
-        local final_content = response:gsub('{"hash": "PENDING", "count": 0}', metadata_str)
+        -- Clean any LLM-generated metadata blocks to prevent duplication
+        local cleaned_response = response:gsub("<!%-%- METADATA: .- %-%->\n*", "")
+
+        -- Programmatically prepend the actual metadata block
+        local metadata_comment = string.format('<!-- METADATA: {"hash": "%s", "count": %d} -->\n', hash, count)
+        local final_content = metadata_comment .. cleaned_response
         
         local output_path = root .. "qLLM.md"
         local f = io.open(output_path, "w")
         if f then
             f:write(final_content)
             f:close()
-            vim.notify("Project Context initialized: " .. output_path, vim.log.levels.INFO)
-            CodeExtraction.build_and_save_call_graph(root)
+            vim.notify("Project Context architectural map initialized: " .. output_path, vim.log.levels.INFO)
         else
             vim.notify("Error: Could not write to " .. output_path, vim.log.levels.ERROR)
         end

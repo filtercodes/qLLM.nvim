@@ -19,6 +19,17 @@ local function get_perf_log_path()
     return path .. "/qllm_perf.log"
 end
 
+local function save_undo_state(bufnr)
+    local path = vim.b[bufnr].json_path or {}
+    local fold = vim.b[bufnr].json_active_fold_idx
+    local path_copy = {}
+    for i, v in ipairs(path) do
+        path_copy[i] = v
+    end
+    vim.b[bufnr].json_last_path = path_copy
+    vim.b[bufnr].json_last_fold_idx = fold
+end
+
 function M.render(bufnr)
     local start_time = vim.loop.hrtime()
     -- Fetch the JSON data from the fast, pure Lua memory cache
@@ -163,6 +174,12 @@ function M.handle_enter(bufnr)
     local col = cursor[2]
     local filepath = vim.b[bufnr].json_file or ""
 
+    -- Save undo state before changing path or active fold
+    save_undo_state(bufnr)
+
+    -- Reset virtual paging index on any navigation or fold change
+    vim.b[bufnr].json_virtual_index = nil
+
     -- If cursor is on the Path line (line 2)
     if row == 2 then
         local path = vim.b[bufnr].json_path or {}
@@ -300,28 +317,40 @@ function M.navigate(bufnr, direction)
 
     local count = vim.v.count > 0 and vim.v.count or 1
     local current_val = tonumber(path[fold_idx])
-    local next_val = current_val + (direction == "forward" and count or -count)
-    if next_val < 1 then
+
+    -- Retrieve tracking virtual index, falling back to current active path index
+    local virtual_index = vim.b[bufnr].json_virtual_index or current_val
+    local next_virtual = virtual_index + (direction == "forward" and count or -count)
+    if next_virtual < 1 then
         vim.notify("json_explore: Cannot decrement index below 1", vim.log.levels.WARN, { title = "qLLM" })
         return
     end
 
+    -- Save new virtual index tracking state
+    vim.b[bufnr].json_virtual_index = next_virtual
+
+    -- Build target path to test if it exists
+    local target_path = {}
+    for i = 1, #path do
+        target_path[i] = path[i]
+    end
+
     local old_val = path[fold_idx]
     if type(old_val) == "number" then
-        path[fold_idx] = next_val
+        target_path[fold_idx] = next_virtual
     else
-        path[fold_idx] = tostring(next_val)
+        target_path[fold_idx] = tostring(next_virtual)
     end
 
     local t1 = vim.loop.hrtime()
 
-    -- Verify if the new path actually exists in the data
+    -- Verify if the target path actually exists in the data
     local data = json_cache[bufnr]
     local temp = data
     local exists = true
-    for i = 1, #path do
+    for i = 1, #target_path do
         if type(temp) == "table" then
-            temp = temp[path[i]]
+            temp = temp[target_path[i]]
         else
             exists = false
             break
@@ -331,12 +360,18 @@ function M.navigate(bufnr, direction)
     local t2 = vim.loop.hrtime()
 
     if not exists or temp == nil then
-        vim.notify(string.format("json_explore: Index %d out of bounds or path doesn't exist.", next_val), vim.log.levels.WARN, { title = "qLLM" })
-        path[fold_idx] = old_val
+        -- Notify warning but do not modify the active path or redraw the UI
+        vim.notify(string.format("json_explore: Index %d out of bounds or path doesn't exist.", next_virtual), vim.log.levels.WARN, { title = "qLLM" })
         return
     end
 
+    -- Target path exists: Save undo state, then update active path and json_path state
+    save_undo_state(bufnr)
+    path[fold_idx] = target_path[fold_idx]
     vim.b[bufnr].json_path = path
+
+    -- Clear command-line area of previous out-of-bounds warning messages
+    vim.cmd("echo ''")
     
     -- Save to persistent state
     local filepath = vim.b[bufnr].json_file or ""
@@ -367,6 +402,44 @@ function M.navigate(bufnr, direction)
             f:close()
         end
     end
+end
+
+function M.undo_navigation(bufnr)
+    local last_path = vim.b[bufnr].json_last_path
+    local last_fold = vim.b[bufnr].json_last_fold_idx
+
+    if not last_path then
+        vim.notify("json_explore: No undo history available.", vim.log.levels.WARN, { title = "qLLM" })
+        return
+    end
+
+    local current_path = vim.b[bufnr].json_path or {}
+    local current_fold = vim.b[bufnr].json_active_fold_idx
+
+    local current_path_copy = {}
+    for i, v in ipairs(current_path) do
+        current_path_copy[i] = v
+    end
+
+    -- Swap current and last
+    vim.b[bufnr].json_path = last_path
+    vim.b[bufnr].json_active_fold_idx = last_fold
+    vim.b[bufnr].json_last_path = current_path_copy
+    vim.b[bufnr].json_last_fold_idx = current_fold
+
+    -- Reset virtual index when undoing
+    vim.b[bufnr].json_virtual_index = nil
+
+    local filepath = vim.b[bufnr].json_file or ""
+    if filepath ~= "" then
+        M.saved_paths[filepath] = {
+            path = last_path,
+            active_fold_idx = last_fold
+        }
+    end
+
+    vim.cmd("echo ''")
+    M.render(bufnr)
 end
 
 function M.start_explorer(filepath, initial_path, bufnr)
@@ -421,8 +494,10 @@ function M.start_explorer(filepath, initial_path, bufnr)
     vim.keymap.set("n", "<BS>", function()
         local path = vim.b[ui_bufnr].json_path or {}
         if #path > 0 then
+            save_undo_state(ui_bufnr)
             table.remove(path)
             vim.b[ui_bufnr].json_path = path
+            vim.b[ui_bufnr].json_virtual_index = nil
             if expanded ~= "" then
                 M.saved_paths[expanded] = {
                     path = path,
@@ -441,6 +516,11 @@ function M.start_explorer(filepath, initial_path, bufnr)
 
     vim.keymap.set("n", "d", function()
         M.navigate(ui_bufnr, "backward")
+    end, { buffer = ui_bufnr, silent = true })
+
+    -- Map u to undo
+    vim.keymap.set("n", "u", function()
+        M.undo_navigation(ui_bufnr)
     end, { buffer = ui_bufnr, silent = true })
 
     -- Set filetype to markdown for syntax highlighting
