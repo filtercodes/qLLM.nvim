@@ -231,16 +231,29 @@ function GeminiProvider.make_call(payload, user_message_text, cb, bufnr)
         local full_text = ""
         local collected_sources = {}
 
+        -- Callback synchronization state to prevent multiple/hanging invocations on errors
+        local finished = false
+        local function safe_on_error(err)
+            if finished then return end
+            finished = true
+            cb.on_error(err)
+        end
+
+        local function safe_on_complete(text)
+            if finished then return end
+            finished = true
+            cb.on_complete(text)
+        end
+
         curl.post(url, {
             body = payload_str,
             headers = headers,
             raw = { "--no-buffer" },
-            timeout = 20000, -- 20 seconds timeout
             stream = function(err, chunk)
                 if err then
                     vim.schedule(function()
                         vim.notify("Gemini Curl Error: " .. vim.inspect(err), vim.log.levels.ERROR)
-                        cb.on_error(err)
+                        safe_on_error(err)
                         Api.run_finished_hook()
                     end)
                     return
@@ -255,7 +268,7 @@ function GeminiProvider.make_call(payload, user_message_text, cb, bufnr)
                              cb.on_chunk(sources_text, false)
                         end
 
-                        if Utils.handle_stream_end(partial_data, full_text, cb, "gemini") then
+                        if Utils.handle_stream_end(partial_data, full_text, { on_error = safe_on_error }, "gemini") then
                             Api.run_finished_hook()
                             return
                         end
@@ -265,7 +278,7 @@ function GeminiProvider.make_call(payload, user_message_text, cb, bufnr)
                         end
                         -- TRACE: Log the final response
                         Logger.log_response("gemini", payload.command or "query", full_text)
-                        cb.on_complete(full_text)
+                        safe_on_complete(full_text)
                         Api.run_finished_hook()
                     end)
                     return 
@@ -297,7 +310,7 @@ function GeminiProvider.make_call(payload, user_message_text, cb, bufnr)
                         if json.error then
                             vim.schedule(function()
                                 -- DELEGATION: All UI error rendering is now handled by the orchestration layer (commands.lua).
-                                cb.on_error(json.error)
+                                safe_on_error(json.error)
                                 Api.run_finished_hook()
                             end)
                             break
@@ -349,7 +362,7 @@ function GeminiProvider.make_call(payload, user_message_text, cb, bufnr)
             end,
             on_error = function(err)
                 print('Curl error:', err.message)
-                cb.on_error(err.message)
+                safe_on_error(err.message)
                 Api.run_finished_hook()
             end,
         })

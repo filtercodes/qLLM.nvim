@@ -13,7 +13,6 @@ Focus is on context management, knowledge extraction and using direct commands t
 | Dependencies | [plenary.nvim](https://github.com/nvim-lua/plenary.nvim), [nui.nvim](https://github.com/MunifTanjim/nui.nvim), and [nvim-treesitter](https://github.com/neovim-treesitter/nvim-treesitter) (with parsers installed for target languages). |
 | External (Code Map) | [tokei](https://github.com/XAMPPRocky/tokei) - CLI binary required for project mapping. <br> • macOS: `brew install tokei` <br> • Linux: `cargo install tokei` (or package manager) <br> • Windows: `scoop install tokei` (or cargo) |
 | External (Wiki) | `sqlite3` CLI and the `sqlite-vec` shared library (see [setup guide](#vector-search-setup-sqlite-vec)). |
-| Optional | tiktoken: `python3 -m pip install tiktoken` - for token tracking support. |
 
 Set environment variable for your preferred API key e.g. `ANTHROPIC_API_KEY` [Claude API key](https://platform.claude.com/settings/workspaces/default/keys).
 
@@ -126,7 +125,7 @@ Commands are logically categorized into **Action** (direct text generation or ed
 | recall  |  none or number | Displays the last assistant response from the chat queue in a popup without altering the queue. Optionally accept a number to go further back (e.g., `:Que recall 2`). |
 | undo  |  none | Removes the last exchange (prompt and the assistant's response) from the chat queue. Useful for reverting a bad conversation turn. |
 | clear  |  none | Completely clears the conversation to start fresh. |
-| list  |  none | Shows the information about conversation queue: buffer number, the number of messages (and tokens if tiktoken is installed), last model, name. |
+| list  |  none | Shows the information about conversation queue: buffer number, the number of messages, estimated tokens, last model, name. |
 | copy  |  number and "merge" | Copy entire buffer queue to another buffer. If passing merge command after buffer number, both buffers will be merged. |
 | load   |  filepath or selection | Load text selection or file content into the chat queue. If the file is a qLLM exported JSON queue, it will restore or merge it. |
 | export |  filepath or none | Export the current chat queue to a JSON file. If filepath is omitted, it auto-generates a filename based on the project folder and date. |
@@ -350,8 +349,6 @@ At the high level, context pipeline resembles a queue hence the name qLLM (queue
 - `"none"`      -- no summarization, sliding window only
 - `"messages"`  -- summarize when message count exceeds `max_messages`
 - `"tokens"`    -- summarize when token count exceeds `max_tokens`
-
-* Note: Python3 and `tiktoken` installed are requirements for using token based queue management.
 
 Example configuration (`init.lua`):
 

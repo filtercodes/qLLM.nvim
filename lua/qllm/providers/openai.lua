@@ -233,6 +233,20 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
         local partial_data = ""
         local full_text = ""
 
+        -- Callback synchronization state to prevent multiple/hanging invocations on errors
+        local finished = false
+        local function safe_on_error(err)
+            if finished then return end
+            finished = true
+            cb.on_error(err)
+        end
+
+        local function safe_on_complete(text)
+            if finished then return end
+            finished = true
+            cb.on_complete(text)
+        end
+
         curl.post(url, {
             body = payload_str,
             headers = headers,
@@ -240,7 +254,7 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
             stream = function(err, chunk)
                 if err then
                     vim.schedule(function() 
-                        cb.on_error(err)
+                        safe_on_error(err)
                         Api.run_finished_hook()
                     end)
                     return
@@ -248,7 +262,7 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
                 if not chunk then 
                     -- End of stream
                     vim.schedule(function()
-                        if Utils.handle_stream_end(partial_data, full_text, cb, "openai") then
+                        if Utils.handle_stream_end(partial_data, full_text, { on_error = safe_on_error }, "openai") then
                             Api.run_finished_hook()
                             return
                         end
@@ -258,7 +272,7 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
                         if not log_ok then
                             vim.notify("[qllm] Logger.log_response failed: " .. tostring(log_err), vim.log.levels.WARN)
                         end
-                        cb.on_complete(full_text)
+                        safe_on_complete(full_text)
                         Api.run_finished_hook()
                     end)
                     return 
@@ -289,7 +303,7 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
                         if json.error then
                             vim.schedule(function()
                                 -- DELEGATION: All UI error rendering is now handled by the orchestration layer (commands.lua).
-                                cb.on_error(json.error)
+                                safe_on_error(json.error)
                                 Api.run_finished_hook()
                             end)
                             return
@@ -364,7 +378,7 @@ function OpenAIProvider.make_call(payload, user_message_text, cb, bufnr)
                 partial_data = string.sub(current_buffer, processed_segment_end + 1)
             end,
             on_error = function(err)
-                cb.on_error(err.message)
+                safe_on_error(err.message)
                 Api.run_finished_hook()
             end
         })

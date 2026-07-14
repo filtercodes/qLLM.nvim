@@ -32,18 +32,23 @@ function AnthropicProvider.make_request(command, cmd_opts, command_args, text_se
     local model = cmd_opts.model
     local output_tokens = cmd_opts.output_tokens or 4096
 
-    -- Default request
+    -- Default request (temperature is conditionally set below based on model support)
     local request = {
         model = model,
         max_tokens = output_tokens,
         system = system_message,
         messages = messages_for_api,
         stream = true,
-        temperature = cmd_opts.temperature or 1.0,
     }
 
-    -- Capability detection based on model ID
-    local is_sonnet = model:find("sonnet") ~= nil
+    -- Capability detection based on model ID using claude_support helper
+    local claude_support = require("qllm.providers.claude_support")
+    local spec = claude_support.get_spec(model)
+
+    if spec.allow_sampling then
+        request.temperature = cmd_opts.temperature or 1.0
+    end
+
     local is_search = cmd_opts.is_search_command
     -- Use the unified thinking flag
     local should_think = cmd_opts.thinking
@@ -56,8 +61,8 @@ function AnthropicProvider.make_request(command, cmd_opts, command_args, text_se
             }
         end
 
-        -- Enable thinking for Sonnet if requested or searching
-        if is_sonnet then
+        -- Enable thinking for model if requested or searching
+        if spec.thinking_type == "manual" then
             local budget = math.floor((tonumber(output_tokens) or 4096) * 0.5)
             if budget < 1024 then budget = 1024 end
             -- Ensure max_tokens is higher than budget
@@ -65,7 +70,28 @@ function AnthropicProvider.make_request(command, cmd_opts, command_args, text_se
                 request.max_tokens = budget + 512
             end
             request.thinking = { type = "enabled", budget_tokens = budget }
-            request.temperature = 1.0
+            if spec.allow_sampling then
+                request.temperature = 1.0
+            end
+        elseif spec.thinking_type == "adaptive" then
+            request.thinking = {}
+            if not spec.always_on_thinking then
+                request.thinking.type = "adaptive"
+            end
+            if spec.display_thinking then
+                request.thinking.display = spec.display_thinking
+            end
+            if spec.supports_effort then
+                local effort = cmd_opts.effort or (type(cmd_opts.reasoning) == "table" and cmd_opts.reasoning.effort) or spec.default_effort or "high"
+                request.output_config = {
+                    effort = effort
+                }
+            end
+        end
+    else
+        -- If thinking is inactive/disabled, check if we need to explicitly disable it
+        if spec.disable_thinking_if_inactive then
+            request.thinking = { type = "disabled" }
         end
     end
 
@@ -123,16 +149,29 @@ function AnthropicProvider.make_call(payload, user_message_text, cb, bufnr)
         local collected_sources = {}
         local Ui = require("qllm.ui")
 
+        -- Callback synchronization state to prevent multiple/hanging invocations on errors
+        local finished = false
+        local function safe_on_error(err)
+            if finished then return end
+            finished = true
+            cb.on_error(err)
+        end
+
+        local function safe_on_complete(text)
+            if finished then return end
+            finished = true
+            cb.on_complete(text)
+        end
+
         curl.post(url, {
             body = payload_str,
             headers = headers,
             raw = { "--no-buffer" },
-            timeout = 30000,
             stream = function(err, chunk)
                 if err then
                     vim.schedule(function()
                         vim.notify("Anthropic Curl Error: " .. vim.inspect(err), vim.log.levels.ERROR)
-                        cb.on_error(tostring(err))
+                        safe_on_error(tostring(err))
                         Api.run_finished_hook()
                     end)
                     return
@@ -146,14 +185,14 @@ function AnthropicProvider.make_call(payload, user_message_text, cb, bufnr)
                             cb.on_chunk(sources_text, false)
                         end
 
-                        if Utils.handle_stream_end(partial_data, full_text, cb, "anthropic") then
+                        if Utils.handle_stream_end(partial_data, full_text, { on_error = safe_on_error }, "anthropic") then
                             Api.run_finished_hook()
                             return
                         end
 
                         -- TRACE: Log the final response
                         Logger.log_response("anthropic", payload.command or "query", full_text)
-                        cb.on_complete(full_text)
+                        safe_on_complete(full_text)
                         Api.run_finished_hook()
                     end)
                     return 
@@ -191,7 +230,7 @@ function AnthropicProvider.make_call(payload, user_message_text, cb, bufnr)
                             if json.type == "error" then
                                 vim.schedule(function()
                                     -- DELEGATION: All UI error rendering is now handled by the orchestration layer (commands.lua).
-                                    cb.on_error(json.error)
+                                    safe_on_error(json.error)
                                     Api.run_finished_hook()
                                 end)
                                 return
@@ -233,7 +272,7 @@ function AnthropicProvider.make_call(payload, user_message_text, cb, bufnr)
                 partial_data = string.sub(current_buffer, processed_segment_end + 1)
             end,
             on_error = function(err)
-                cb.on_error(tostring(err.message or err))
+                safe_on_error(tostring(err.message or err))
                 Api.run_finished_hook()
             end
         })

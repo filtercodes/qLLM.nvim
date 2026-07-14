@@ -184,31 +184,12 @@ end
 function Utils.get_accurate_tokens(content)
     content = content or ""
 
-    local py_code = [[
-import sys
-try:
-    import tiktoken
-except Exception as e:
-    print(f"ERROR: {e}")
-    raise SystemExit(1)
+    -- Heuristic: 1 token is approximately 3.8 characters for standard code and prose.
+    -- This provides a fast, zero-dependency local estimate.
+    local char_count = #content
+    local estimated_tokens = math.floor(char_count / 3.8)
 
-text = sys.stdin.read()
-encoder = tiktoken.get_encoding("cl100k_base")
-print(len(encoder.encode(text)))
-]]
-
-    local out = vim.fn.system({ "python3", "-c", py_code }, content)
-
-    if vim.v.shell_error ~= 0 then
-        return false, vim.trim(out ~= "" and out or "tiktoken unavailable")
-    end
-
-    local token_count = tonumber(vim.trim(out))
-    if not token_count then
-        return false, "failed to parse token count"
-    end
-
-    return true, token_count
+    return true, estimated_tokens
 end
 
 function Utils.remove_trailing_whitespace(lines)
