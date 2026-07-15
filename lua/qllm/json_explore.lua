@@ -30,7 +30,111 @@ local function save_undo_state(bufnr)
     vim.b[bufnr].json_last_fold_idx = fold
 end
 
+local function show_transient_warning(msg)
+    vim.api.nvim_echo({{ msg, "WarningMsg" }}, false, {})
+end
+
+local function save_path_state(filepath, path, active_fold_idx)
+    if filepath == "" then return end
+    if not M.saved_paths[filepath] then
+        M.saved_paths[filepath] = {
+            cursor_positions = {}
+        }
+    end
+    M.saved_paths[filepath].path = path
+    M.saved_paths[filepath].active_fold_idx = active_fold_idx
+end
+
+local function save_current_cursor(bufnr)
+    local filepath = vim.b[bufnr].json_file or ""
+    if filepath == "" then return end
+
+    local path = vim.b[bufnr].json_path or {}
+    local path_key = "root." .. table.concat(path, ".")
+    local cursor = vim.api.nvim_win_get_cursor(0)
+
+    save_path_state(filepath, path, vim.b[bufnr].json_active_fold_idx)
+    M.saved_paths[filepath].cursor_positions[path_key] = cursor
+end
+
+local function restore_cursor(bufnr)
+    local filepath = vim.b[bufnr].json_file or ""
+    local path = vim.b[bufnr].json_path or {}
+    local line_count = vim.api.nvim_buf_line_count(bufnr)
+
+    -- 1. Check if returning from a sub-path and focus the child key we came from
+    local old_path = vim.b[bufnr].json_old_path
+    local focused_from_parent = false
+    if old_path and #old_path > #path then
+        local is_prefix = true
+        for i = 1, #path do
+            if old_path[i] ~= path[i] then
+                is_prefix = false
+                break
+            end
+        end
+        if is_prefix then
+            local came_from_key = old_path[#path + 1]
+            if came_from_key then
+                local target_prefix_1 = "▶ [" .. tostring(came_from_key) .. "]"
+                local target_prefix_2 = "  [" .. tostring(came_from_key) .. "]"
+                for idx = 1, line_count do
+                    local line_content = vim.api.nvim_buf_get_lines(bufnr, idx - 1, idx, false)[1] or ""
+                    if string.find(line_content, target_prefix_1, 1, true) == 1 or
+                       string.find(line_content, target_prefix_2, 1, true) == 1 then
+                        pcall(vim.api.nvim_win_set_cursor, 0, { idx, 0 })
+                        focused_from_parent = true
+                        break
+                    end
+                end
+            end
+        end
+        -- Always clear old_path state after checking
+        vim.b[bufnr].json_old_path = nil
+    end
+
+    if focused_from_parent then
+        return
+    end
+
+    -- 2. Scan the buffer to locate the first expandable child node (starting with "▶ ")
+    local first_child_line = nil
+    for idx = 1, line_count do
+        local line_content = vim.api.nvim_buf_get_lines(bufnr, idx - 1, idx, false)[1] or ""
+        if string.sub(line_content, 1, 4) == "▶ " then
+            first_child_line = idx
+            break
+        end
+    end
+
+    -- If an expandable child exists, snap to it. Otherwise, default to line 5 (or 4 if empty)
+    local default_line = first_child_line or math.min((#path > 0) and 5 or 4, line_count)
+
+    if filepath == "" then 
+        vim.api.nvim_win_set_cursor(0, {default_line, 0})
+        return 
+    end
+
+    local path_key = "root." .. table.concat(path, ".")
+    local saved = M.saved_paths[filepath]
+
+    if saved and saved.cursor_positions and saved.cursor_positions[path_key] then
+        local cursor = saved.cursor_positions[path_key]
+        local row = math.min(cursor[1], line_count)
+        -- Never let the restored cursor sit automatically on the parent navigator line (line 4)
+        if #path > 0 and row == 4 then
+            row = math.min(5, line_count)
+        end
+        pcall(vim.api.nvim_win_set_cursor, 0, {row, cursor[2]})
+    else
+        vim.api.nvim_win_set_cursor(0, {default_line, 0})
+    end
+end
+
 function M.render(bufnr)
+    -- Clear command-line area of any previous warnings on successful node/path changes
+    vim.cmd("echo ''")
+
     local start_time = vim.loop.hrtime()
     -- Fetch the JSON data from the fast, pure Lua memory cache
     local data = json_cache[bufnr]
@@ -107,6 +211,12 @@ function M.render(bufnr)
         table.insert(lines, "  " .. vim.inspect(node))
     end
 
+    -- If we are nested and there are no children, append an empty line
+    -- to allow the cursor to sit on line 5 instead of clamping to the parent navigator (line 4).
+    if #path > 0 and #lines < 5 then
+        table.insert(lines, "")
+    end
+
     local t3 = vim.loop.hrtime()
 
     -- Universal approach: If enabled, scan all generated lines and split any containing '\n' into actual newlines
@@ -166,9 +276,13 @@ function M.render(bufnr)
             f:close()
         end
     end
+
+    -- Restore saved cursor position for this path, or default to first child
+    restore_cursor(bufnr)
 end
 
 function M.handle_enter(bufnr)
+    save_current_cursor(bufnr)
     local cursor = vim.api.nvim_win_get_cursor(0)
     local row = cursor[1]
     local col = cursor[2]
@@ -189,10 +303,7 @@ function M.handle_enter(bufnr)
         if #path == 0 or col < prefix_len then
             vim.b[bufnr].json_active_fold_idx = nil
             if filepath ~= "" then
-                M.saved_paths[filepath] = {
-                    path = path,
-                    active_fold_idx = nil
-                }
+                save_path_state(filepath, path, nil)
             end
             vim.notify("json_explore: Reset to default folding point.", vim.log.levels.INFO, { title = "qLLM" })
             M.render(bufnr)
@@ -218,10 +329,7 @@ function M.handle_enter(bufnr)
             if type(part) == "number" or (type(part) == "string" and tonumber(part) ~= nil) then
                 vim.b[bufnr].json_active_fold_idx = selected_idx
                 if filepath ~= "" then
-                    M.saved_paths[filepath] = {
-                        path = path,
-                        active_fold_idx = selected_idx
-                    }
+                    save_path_state(filepath, path, selected_idx)
                 end
                 vim.notify(string.format("json_explore: Active folding index set to segment %d (%s)", selected_idx, tostring(part)), vim.log.levels.INFO, { title = "qLLM" })
                 M.render(bufnr)
@@ -238,17 +346,16 @@ function M.handle_enter(bufnr)
     -- Check if back navigation
     if line:find("◀ %[%.%.%]") then
         if #path > 0 then
+            local old_path = {}
+            for i, v in ipairs(path) do old_path[i] = v end
+            vim.b[bufnr].json_old_path = old_path
+
             table.remove(path)
             vim.b[bufnr].json_path = path
             if filepath ~= "" then
-                M.saved_paths[filepath] = {
-                    path = path,
-                    active_fold_idx = vim.b[bufnr].json_active_fold_idx
-                }
+                save_path_state(filepath, path, vim.b[bufnr].json_active_fold_idx)
             end
             M.render(bufnr)
-            -- Move cursor back to top
-            vim.api.nvim_win_set_cursor(0, {4, 0})
         end
         return
     end
@@ -265,14 +372,9 @@ function M.handle_enter(bufnr)
         end
         vim.b[bufnr].json_path = path
         if filepath ~= "" then
-            M.saved_paths[filepath] = {
-                path = path,
-                active_fold_idx = vim.b[bufnr].json_active_fold_idx
-            }
+            save_path_state(filepath, path, vim.b[bufnr].json_active_fold_idx)
         end
         M.render(bufnr)
-        -- Move cursor back to top/first item
-        vim.api.nvim_win_set_cursor(0, {4, 0})
         return
     end
 end
@@ -301,17 +403,51 @@ function find_folding_index(path, bufnr)
     return nil
 end
 
+---Cycles the cursor forward or backward through lines that are expandable child nodes (starting with '▶ ' or '◀ ').
+---@param bufnr number The UI buffer number.
+---@param direction string "forward" or "backward".
+function M.jump_to_expandable_child(bufnr, direction)
+    local cur_line = vim.api.nvim_win_get_cursor(0)[1]
+    local line_count = vim.api.nvim_buf_line_count(bufnr)
+
+    local start_offset = (direction == "forward") and 1 or -1
+    local step = (direction == "forward") and 1 or -1
+
+    local index = cur_line + start_offset
+    local iterations = 0
+
+    while iterations < line_count do
+        -- Wrap around indices (1-indexed lines)
+        if index > line_count then
+            index = 1
+        elseif index < 1 then
+            index = line_count
+        end
+
+        local line_content = vim.api.nvim_buf_get_lines(bufnr, index - 1, index, false)[1] or ""
+        -- Match keys or parents that can open
+        if string.sub(line_content, 1, 4) == "▶ " or string.sub(line_content, 1, 5) == "◀ " then
+            pcall(vim.api.nvim_win_set_cursor, 0, { index, 0 })
+            return
+        end
+
+        index = index + step
+        iterations = iterations + 1
+    end
+end
+
 function M.navigate(bufnr, direction)
+    save_current_cursor(bufnr)
     local start_time = vim.loop.hrtime()
     local path = vim.b[bufnr].json_path or {}
     if #path == 0 then
-        vim.notify("json_explore: Cannot navigate on root path.", vim.log.levels.WARN, { title = "qLLM" })
+        show_transient_warning("json_explore: Cannot navigate on root path.")
         return
     end
 
     local fold_idx = find_folding_index(path, bufnr)
     if not fold_idx then
-        vim.notify("json_explore: No numeric folding index found in current path.", vim.log.levels.WARN, { title = "qLLM" })
+        show_transient_warning("json_explore: No numeric folding index found in current path.")
         return
     end
 
@@ -322,7 +458,7 @@ function M.navigate(bufnr, direction)
     local virtual_index = vim.b[bufnr].json_virtual_index or current_val
     local next_virtual = virtual_index + (direction == "forward" and count or -count)
     if next_virtual < 1 then
-        vim.notify("json_explore: Cannot decrement index below 1", vim.log.levels.WARN, { title = "qLLM" })
+        show_transient_warning("json_explore: Cannot decrement index below 1.")
         return
     end
 
@@ -361,7 +497,7 @@ function M.navigate(bufnr, direction)
 
     if not exists or temp == nil then
         -- Notify warning but do not modify the active path or redraw the UI
-        vim.notify(string.format("json_explore: Index %d out of bounds or path doesn't exist.", next_virtual), vim.log.levels.WARN, { title = "qLLM" })
+        show_transient_warning(string.format("json_explore: Index %d out of bounds or path doesn't exist.", next_virtual))
         return
     end
 
@@ -370,16 +506,10 @@ function M.navigate(bufnr, direction)
     path[fold_idx] = target_path[fold_idx]
     vim.b[bufnr].json_path = path
 
-    -- Clear command-line area of previous out-of-bounds warning messages
-    vim.cmd("echo ''")
-    
     -- Save to persistent state
     local filepath = vim.b[bufnr].json_file or ""
     if filepath ~= "" then
-        M.saved_paths[filepath] = {
-            path = path,
-            active_fold_idx = vim.b[bufnr].json_active_fold_idx
-        }
+        save_path_state(filepath, path, vim.b[bufnr].json_active_fold_idx)
     end
 
     local t3 = vim.loop.hrtime()
@@ -432,13 +562,9 @@ function M.undo_navigation(bufnr)
 
     local filepath = vim.b[bufnr].json_file or ""
     if filepath ~= "" then
-        M.saved_paths[filepath] = {
-            path = last_path,
-            active_fold_idx = last_fold
-        }
+        save_path_state(filepath, last_path, last_fold)
     end
 
-    vim.cmd("echo ''")
     M.render(bufnr)
 end
 
@@ -492,20 +618,21 @@ function M.start_explorer(filepath, initial_path, bufnr)
 
     -- Map Backspace to go back
     vim.keymap.set("n", "<BS>", function()
+        save_current_cursor(ui_bufnr)
         local path = vim.b[ui_bufnr].json_path or {}
         if #path > 0 then
             save_undo_state(ui_bufnr)
+            local old_path = {}
+            for i, v in ipairs(path) do old_path[i] = v end
+            vim.b[ui_bufnr].json_old_path = old_path
+
             table.remove(path)
             vim.b[ui_bufnr].json_path = path
             vim.b[ui_bufnr].json_virtual_index = nil
             if expanded ~= "" then
-                M.saved_paths[expanded] = {
-                    path = path,
-                    active_fold_idx = vim.b[ui_bufnr].json_active_fold_idx
-                }
+                save_path_state(expanded, path, vim.b[ui_bufnr].json_active_fold_idx)
             end
             M.render(ui_bufnr)
-            vim.api.nvim_win_set_cursor(0, {4, 0})
         end
     end, { buffer = ui_bufnr, silent = true })
 
@@ -518,6 +645,15 @@ function M.start_explorer(filepath, initial_path, bufnr)
         M.navigate(ui_bufnr, "backward")
     end, { buffer = ui_bufnr, silent = true })
 
+    -- Map c to jump to next expandable child, C to jump to previous
+    vim.keymap.set("n", "c", function()
+        M.jump_to_expandable_child(ui_bufnr, "forward")
+    end, { buffer = ui_bufnr, silent = true })
+
+    vim.keymap.set("n", "C", function()
+        M.jump_to_expandable_child(ui_bufnr, "backward")
+    end, { buffer = ui_bufnr, silent = true })
+
     -- Map u to undo
     vim.keymap.set("n", "u", function()
         M.undo_navigation(ui_bufnr)
@@ -528,7 +664,6 @@ function M.start_explorer(filepath, initial_path, bufnr)
 
     -- Initial render
     M.render(ui_bufnr)
-    vim.api.nvim_win_set_cursor(0, {4, 0})
 end
 
 return M

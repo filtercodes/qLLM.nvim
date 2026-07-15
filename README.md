@@ -449,6 +449,7 @@ To inspect structured data and load specific keys or values into the LLM context
 - **Navigation Controls**:
   - Press `<CR>` (Enter) on any line matching `▶ [key]` to go into it.
   - Press `<CR>` on `◀ [..]` or press `<BS>` (Backspace) anywhere to go back up to the parent directory.
+  - Press `c` to jump forward to the next expandable child node (lines starting with `▶ ` or `◀ `), and `C` to jump backward to the previous child.
   - Press `u` to undo the last navigation action (pressing it again acts as a redo).
 - **Index Pagination (Folding Point Traversal)**:
   - If the path you are exploring contains a numeric array/object index (e.g. `users.1.name`), the first numeric coordinate (scanning left-to-right) acts as the active folding point.

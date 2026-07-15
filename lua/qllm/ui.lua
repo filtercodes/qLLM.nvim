@@ -350,6 +350,9 @@ function Ui.window_mapping(ui_elem)
     -- Setup buffer-local queue traversal for [ and ] if it is a recall/recallq popup
     if vim.b[ui_elem.bufnr].qllm_recall_index ~= nil then
         local function traverse_recall(direction)
+            -- Save current cursor position back to queue before switching index
+            Ui.save_cursor_pos_for_buf(ui_elem.bufnr)
+
             local cur_index = vim.b[ui_elem.bufnr].qllm_recall_index or 1
             local next_index = cur_index
             if direction == "forward" then
