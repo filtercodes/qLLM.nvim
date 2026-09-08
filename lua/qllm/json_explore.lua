@@ -1,6 +1,7 @@
 local M = {}
 local Window = require("qllm.window")
 local Ui = require("qllm.ui")
+local HtmlConverter = require("qllm.html_converter")
 
 -- Module-level cache to store decoded Lua tables for each popup buffer.
 -- This bypasses the slow serialization/copying overhead of crossing the vim.b boundary.
@@ -34,7 +35,7 @@ local function show_transient_warning(msg)
     vim.api.nvim_echo({{ msg, "WarningMsg" }}, false, {})
 end
 
-local function save_path_state(filepath, path, active_fold_idx, search_query, search_results, search_index)
+local function save_path_state(filepath, path, active_fold_idx, search_query, search_results, search_index, convert_html)
     if filepath == "" then return end
     if not M.saved_paths[filepath] then
         M.saved_paths[filepath] = {
@@ -55,6 +56,9 @@ local function save_path_state(filepath, path, active_fold_idx, search_query, se
     end
     if search_index ~= nil then
         M.saved_paths[filepath].search_index = search_index
+    end
+    if convert_html ~= nil then
+        M.saved_paths[filepath].convert_html = convert_html
     end
 end
 
@@ -318,6 +322,8 @@ function M.render(bufnr)
         table.insert(lines, "")
     end
 
+    local convert_html = vim.b[bufnr].json_convert_html == true
+
     if type(node) == "table" then
         -- Check if it's an array or a dictionary
         local is_array = true
@@ -339,7 +345,12 @@ function M.render(bufnr)
                 if type(val) == "table" then
                     table.insert(lines, string.format("▶ [%d]", i))
                 else
-                    table.insert(lines, string.format("  [%d] = %s", i, vim.inspect(val)))
+                    if convert_html and type(val) == "string" and HtmlConverter.is_html(val) then
+                        local md = HtmlConverter.to_markdown(val)
+                        table.insert(lines, string.format("  [%d] = %s", i, md))
+                    else
+                        table.insert(lines, string.format("  [%d] = %s", i, vim.inspect(val)))
+                    end
                 end
             end
         else
@@ -352,13 +363,23 @@ function M.render(bufnr)
                 if type(val) == "table" then
                     table.insert(lines, string.format("▶ [%s]", tostring(k)))
                 else
-                    table.insert(lines, string.format("  [%s] = %s", tostring(k), vim.inspect(val)))
+                    local k_str = tostring(k)
+                    if convert_html and (k_str == "html" or (type(val) == "string" and HtmlConverter.is_html(val))) and type(val) == "string" then
+                        local md = HtmlConverter.to_markdown(val)
+                        table.insert(lines, string.format("  [%s] = %s", k_str, md))
+                    else
+                        table.insert(lines, string.format("  [%s] = %s", k_str, vim.inspect(val)))
+                    end
                 end
             end
         end
     else
         table.insert(lines, "Value:")
-        table.insert(lines, "  " .. vim.inspect(node))
+        if convert_html and type(node) == "string" and (path[#path] == "html" or HtmlConverter.is_html(node)) then
+            table.insert(lines, "  " .. HtmlConverter.to_markdown(node))
+        else
+            table.insert(lines, "  " .. vim.inspect(node))
+        end
     end
 
     -- If we are nested and there are no children, append an empty line
@@ -369,8 +390,8 @@ function M.render(bufnr)
 
     local t3 = vim.loop.hrtime()
 
-    -- Universal approach: If enabled, scan all generated lines and split any containing '\n' into actual newlines
-    if vim.g.qllm_json_newline then
+    -- Universal approach: If enabled or if HTML conversion is active, scan all generated lines and split any containing '\n' into actual newlines
+    if vim.g.qllm_json_newline or convert_html then
         local expanded_lines = {}
         for _, line in ipairs(lines) do
             local clean_line = line:gsub("\\n", "\n"):gsub("\\r", "")
@@ -508,6 +529,23 @@ function M.handle_enter(bufnr)
             M.render(bufnr)
         end
         return
+    end
+
+    -- Check if cursor is positioned within "[html]" on this line to toggle HTML markdown conversion
+    local html_s, html_e = line:find("%[html%]")
+    if html_s and html_e then
+        -- col is 0-indexed cursor column; check if within bounds of [html]
+        if col >= (html_s - 1) and col < html_e then
+            local current_state = vim.b[bufnr].json_convert_html == true
+            vim.b[bufnr].json_convert_html = not current_state
+            local state_str = vim.b[bufnr].json_convert_html and "enabled" or "disabled"
+            if filepath ~= "" then
+                save_path_state(filepath, path, vim.b[bufnr].json_active_fold_idx, nil, nil, nil, vim.b[bufnr].json_convert_html)
+            end
+            vim.notify(string.format("json_explore: HTML conversion %s.", state_str), vim.log.levels.INFO, { title = "qLLM" })
+            M.render(bufnr)
+            return
+        end
     end
 
     -- Check if drilling into an object/array
@@ -891,6 +929,13 @@ function M.start_explorer(filepath, initial_path, bufnr, search_query)
         end
     end
 
+    local default_convert_html = false
+    if vim.g.qllm_explr_conv_html == true then
+        default_convert_html = true
+    elseif saved and saved.convert_html ~= nil then
+        default_convert_html = saved.convert_html
+    end
+
     vim.b[ui_bufnr].json_path = use_path
     vim.b[ui_bufnr].json_initial_path_len = #(initial_path or {})
     vim.b[ui_bufnr].json_file = expanded
@@ -899,6 +944,7 @@ function M.start_explorer(filepath, initial_path, bufnr, search_query)
     vim.b[ui_bufnr].json_search_query = search_query or (saved and saved.search_query) or ""
     vim.b[ui_bufnr].json_search_results = is_search and search_results or (saved and saved.search_results) or {}
     vim.b[ui_bufnr].json_search_index = is_search and search_idx or (saved and saved.search_index) or 1
+    vim.b[ui_bufnr].json_convert_html = default_convert_html
     vim.b[ui_bufnr].qllm_metadata = { command = "json_explore" }
 
     -- Map Enter key in this buffer to handle navigation
@@ -982,6 +1028,7 @@ function M.start_explorer(filepath, initial_path, bufnr, search_query)
 
     -- Set filetype to markdown for syntax highlighting
     vim.api.nvim_buf_set_option(ui_bufnr, "filetype", "markdown")
+    pcall(vim.treesitter.start, ui_bufnr, "markdown")
 
     -- Initial render
     M.render(ui_bufnr)
